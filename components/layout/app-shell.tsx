@@ -16,7 +16,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { href: '/notifications', label: 'Notificaciones' },
     { href: '/profile', label: 'Perfil' },
     { href: '/settings', label: 'Configuración' },
-    ...(user?.global_role === 'system_admin' ? [{ href: '/admin', label: 'Backoffice' }] : [])
+    ...(user?.global_role === 'admin' ? [{ href: '/admin', label: 'Backoffice' }] : [])
   ];
 
   return (

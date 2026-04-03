@@ -10,10 +10,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) router.replace('/login?redirect=/admin');
-    else if (user.global_role !== 'system_admin') router.replace('/dashboard');
+    else if (user.global_role !== 'admin') router.replace('/dashboard');
   }, [user, router]);
 
-  if (!user || user.global_role !== 'system_admin') return null;
+  if (!user || user.global_role !== 'admin') return null;
 
   return <div className="min-h-screen bg-slate-50 p-4 md:p-8">{children}</div>;
 }

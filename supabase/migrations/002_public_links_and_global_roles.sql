@@ -1,6 +1,6 @@
 -- Add global roles and public invitation link support
 do $$ begin
-  create type public.global_role as enum ('user', 'system_admin');
+  create type public.global_role as enum ('user', 'admin');
 exception when duplicate_object then null;
 end $$;
 

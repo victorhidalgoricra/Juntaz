@@ -13,6 +13,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { useAppStore } from '@/store/app-store';
 import { generarCronograma } from '@/services/schedule.service';
 import { makeSlug } from '@/lib/slug';
+import { createJuntaRecord } from '@/services/juntas.repository';
 
 export default function NewJuntaPage() {
   const router = useRouter();
@@ -24,9 +25,18 @@ export default function NewJuntaPage() {
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const { register, handleSubmit, setError, formState } = useForm<z.infer<typeof createJuntaSchema>>({
-    defaultValues: { moneda: 'PEN', frecuencia_pago: 'semanal', visibilidad: 'privada', cerrar_inscripciones: false }
+    defaultValues: {
+      moneda: 'PEN',
+      frecuencia_pago: 'semanal',
+      visibilidad: 'privada',
+      cerrar_inscripciones: false,
+      premio_primero_pct: 3,
+      descuento_ultimo_pct: 3,
+      fee_plataforma_pct: 2
+    }
   });
 
   useEffect(() => {
@@ -44,10 +54,13 @@ export default function NewJuntaPage() {
   return (
     <Card className="space-y-4">
       <h1 className="text-xl font-semibold">Crear junta</h1>
+      <p className="text-sm text-slate-600">Define reglas financieras y estructura del grupo para simular tu ciclo.</p>
+
       <form
         className="grid gap-3 md:grid-cols-2"
         onSubmit={handleSubmit(async (values) => {
           setErrorMsg(null);
+          setSuccessMsg(null);
           const parsed = createJuntaSchema.safeParse(values);
           if (!parsed.success) {
             const issue = parsed.error.issues[0];
@@ -69,6 +82,12 @@ export default function NewJuntaPage() {
               estado: 'borrador' as const,
               created_at: new Date().toISOString()
             };
+
+            const persistResult = await createJuntaRecord(created);
+            if (!persistResult.ok) {
+              throw new Error(`Error al guardar en Supabase: ${persistResult.message}`);
+            }
+
             const schedule = generarCronograma({
               juntaId,
               participantes: values.participantes_max,
@@ -82,7 +101,9 @@ export default function NewJuntaPage() {
               schedules: [...allSchedules, ...schedule],
               members: [...allMembers, { id: crypto.randomUUID(), junta_id: juntaId, profile_id: user.id, estado: 'activo', orden_turno: 1 }]
             });
-            router.push(`/juntas/${juntaId}`);
+
+            setSuccessMsg('Junta creada con éxito. Redirigiendo al simulador...');
+            setTimeout(() => router.push(`/juntas/${juntaId}`), 450);
           } catch (error) {
             setErrorMsg(error instanceof Error ? error.message : 'No se pudo crear la junta. Intenta nuevamente.');
           } finally {
@@ -90,22 +111,27 @@ export default function NewJuntaPage() {
           }
         })}
       >
-        <Input placeholder="Nombre" {...register('nombre')} />
-        <Input placeholder="Descripción" {...register('descripcion')} />
-        <Select {...register('moneda')}><option value="PEN">PEN</option><option value="USD">USD</option></Select>
-        <Input type="number" placeholder="Participantes" {...register('participantes_max')} />
-        <Input type="number" placeholder="Monto por cuota" {...register('monto_cuota')} />
+        <Input placeholder="Nombre de la junta" {...register('nombre')} />
+        <Input placeholder="Descripción (opcional)" {...register('descripcion')} />
+        <Input type="number" placeholder="Tamaño del grupo" {...register('participantes_max')} />
+        <Input type="number" placeholder="Aporte por periodo" {...register('monto_cuota')} />
         <Select {...register('frecuencia_pago')}><option value="semanal">Semanal</option><option value="quincenal">Quincenal</option><option value="mensual">Mensual</option></Select>
         <Input type="date" {...register('fecha_inicio')} />
+        <Input type="number" placeholder="Premio primero (%)" {...register('premio_primero_pct')} />
+        <Input type="number" placeholder="Descuento último (%)" {...register('descuento_ultimo_pct')} />
+        <Input type="number" placeholder="Fee plataforma (%)" {...register('fee_plataforma_pct')} />
         <Input type="number" placeholder="Día límite pago" {...register('dia_limite_pago')} />
-        <Input type="number" placeholder="Penalidad mora" {...register('penalidad_mora')} />
+        <Select {...register('moneda')}><option value="PEN">PEN</option><option value="USD">USD</option></Select>
         <Select {...register('visibilidad')}><option value="privada">Privada</option><option value="invitacion">Invitación</option></Select>
+
         <label className="col-span-full flex items-center gap-2 text-sm">
           <input type="checkbox" {...register('cerrar_inscripciones')} /> Cerrar inscripciones al completar
         </label>
+
         {formState.errors.nombre && <p className="col-span-full text-xs text-red-500">{formState.errors.nombre.message}</p>}
         {errorMsg && <p className="col-span-full text-xs text-red-500">{errorMsg}</p>}
-        <Button className="col-span-full" disabled={loading}>{loading ? 'Creando...' : 'Guardar junta'}</Button>
+        {successMsg && <p className="col-span-full text-xs text-emerald-600">{successMsg}</p>}
+        <Button className="col-span-full" disabled={loading}>{loading ? 'Guardando...' : 'Guardar junta'}</Button>
       </form>
     </Card>
   );

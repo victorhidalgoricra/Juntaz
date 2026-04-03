@@ -3,7 +3,7 @@ export type EstadoJunta = 'borrador' | 'activa' | 'cerrada' | 'bloqueada';
 export type EstadoMiembro = 'invitado' | 'activo' | 'pendiente' | 'moroso' | 'retirado';
 export type EstadoCuota = 'pendiente' | 'pagada' | 'vencida';
 export type EstadoPago = 'pendiente_aprobacion' | 'aprobado' | 'rechazado';
-export type GlobalRole = 'user' | 'system_admin';
+export type GlobalRole = 'user' | 'admin';
 
 export interface Profile {
   id: string;
@@ -25,6 +25,9 @@ export interface Junta {
   moneda: 'PEN' | 'USD';
   participantes_max: number;
   monto_cuota: number;
+  premio_primero_pct: number;
+  descuento_ultimo_pct: number;
+  fee_plataforma_pct: number;
   frecuencia_pago: Frecuencia;
   fecha_inicio: string;
   dia_limite_pago: number;
