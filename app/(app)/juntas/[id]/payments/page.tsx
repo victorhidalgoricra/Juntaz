@@ -11,10 +11,15 @@ import { useAuthStore } from '@/store/auth-store';
 import { exportarPagosCsv } from '@/services/report.service';
 
 export default function PaymentsPage({ params }: { params: { id: string } }) {
-  const user = useAuthStore((s) => s.user)!;
+  const user = useAuthStore((s) => s.user);
   const { payments, schedules, setData } = useAppStore();
   const [monto, setMonto] = useState('');
   const [scheduleId, setScheduleId] = useState('');
+
+
+  if (!user) {
+    return <Card><p className="text-sm text-slate-600">Inicia sesión para continuar.</p></Card>;
+  }
 
   const list = payments.filter((p) => p.junta_id === params.id);
 

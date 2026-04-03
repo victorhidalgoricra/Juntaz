@@ -12,10 +12,21 @@ export default function PrivateLayout({ children }: { children: ReactNode }) {
   const { user, setUser } = useAuthStore();
 
   useEffect(() => {
-    if (!user) router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
+    if (!user) {
+      const redirect = pathname || '/dashboard';
+      router.replace(`/login?redirect=${encodeURIComponent(redirect)}`);
+    }
   }, [user, router, pathname]);
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+        <div className="rounded-lg border bg-white p-6 text-center">
+          <p className="text-sm text-slate-600">Redirigiendo a login...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <AppShell>

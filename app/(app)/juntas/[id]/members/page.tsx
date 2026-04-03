@@ -10,8 +10,13 @@ import { useAuthStore } from '@/store/auth-store';
 
 export default function MembersPage({ params }: { params: { id: string } }) {
   const { members, setData } = useAppStore();
-  const user = useAuthStore((s) => s.user)!;
+  const user = useAuthStore((s) => s.user);
   const [contacto, setContacto] = useState('');
+
+  if (!user) {
+    return <Card><p className="text-sm text-slate-600">Inicia sesión para continuar.</p></Card>;
+  }
+
   const list = members.filter((m) => m.junta_id === params.id).sort((a, b) => a.orden_turno - b.orden_turno);
 
   return (

@@ -12,14 +12,20 @@ import { useAuthStore } from '@/store/auth-store';
 import { calcularPozo } from '@/services/junta.service';
 
 export default function DashboardPage() {
-  const user = useAuthStore((s) => s.user)!;
+  const user = useAuthStore((s) => s.user);
   const { juntas, schedules, payments } = useAppStore();
-  const admin = juntas.filter((j) => j.admin_id === user.id);
-  const member = juntas.filter((j) => j.admin_id !== user.id);
 
-  const pagadas = payments.filter((p) => p.estado === 'aprobado').length;
-  const vencidas = schedules.filter((s) => s.estado === 'vencida').length;
-  const totalAportado = payments.filter((p) => p.profile_id === user.id && p.estado === 'aprobado').reduce((a, p) => a + p.monto, 0);
+  if (!user) return <Card>Necesitas iniciar sesión para ver tu dashboard.</Card>;
+  const safeJuntas = Array.isArray(juntas) ? juntas : [];
+  const safeSchedules = Array.isArray(schedules) ? schedules : [];
+  const safePayments = Array.isArray(payments) ? payments : [];
+
+  const admin = safeJuntas.filter((j) => j.admin_id === user.id);
+  const member = safeJuntas.filter((j) => j.admin_id !== user.id);
+
+  const pagadas = safePayments.filter((p) => p.estado === 'aprobado').length;
+  const vencidas = safeSchedules.filter((s) => s.estado === 'vencida').length;
+  const totalAportado = safePayments.filter((p) => p.profile_id === user.id && p.estado === 'aprobado').reduce((a, p) => a + p.monto, 0);
 
   return (
     <div className="space-y-4">
@@ -45,7 +51,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between"><h2 className="font-semibold">Juntas que administro</h2><Button><Link href="/juntas/new">Nueva junta</Link></Button></div>
         <div className="grid gap-3 md:grid-cols-2">
           {admin.length === 0 ? <Card>Sin juntas aún.</Card> : admin.map((j) => {
-            const next = schedules.find((s) => s.junta_id === j.id);
+            const next = safeSchedules.find((s) => s.junta_id === j.id);
             return (
               <Card key={j.id}>
                 <Link href={`/juntas/${j.id}`} className="font-semibold">{j.nombre}</Link>

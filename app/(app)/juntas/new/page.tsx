@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -15,18 +16,38 @@ import { makeSlug } from '@/lib/slug';
 
 export default function NewJuntaPage() {
   const router = useRouter();
-  const user = useAuthStore((s) => s.user)!;
-  const { juntas, schedules, members, setData } = useAppStore();
+  const user = useAuthStore((s) => s.user);
+  const allJuntas = useAppStore((s) => (Array.isArray(s.juntas) ? s.juntas : []));
+  const allSchedules = useAppStore((s) => (Array.isArray(s.schedules) ? s.schedules : []));
+  const allMembers = useAppStore((s) => (Array.isArray(s.members) ? s.members : []));
+  const setData = useAppStore((s) => s.setData);
+
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
   const { register, handleSubmit, setError, formState } = useForm<z.infer<typeof createJuntaSchema>>({
     defaultValues: { moneda: 'PEN', frecuencia_pago: 'semanal', visibilidad: 'privada', cerrar_inscripciones: false }
   });
+
+  useEffect(() => {
+    if (!user) router.replace('/login?redirect=/juntas/new');
+  }, [user, router]);
+
+  if (!user) {
+    return (
+      <Card>
+        <p className="text-sm text-slate-600">Necesitas iniciar sesión para crear una junta. Redirigiendo...</p>
+      </Card>
+    );
+  }
 
   return (
     <Card className="space-y-4">
       <h1 className="text-xl font-semibold">Crear junta</h1>
       <form
         className="grid gap-3 md:grid-cols-2"
-        onSubmit={handleSubmit((values) => {
+        onSubmit={handleSubmit(async (values) => {
+          setErrorMsg(null);
           const parsed = createJuntaSchema.safeParse(values);
           if (!parsed.success) {
             const issue = parsed.error.issues[0];
@@ -34,31 +55,39 @@ export default function NewJuntaPage() {
             return;
           }
 
-          const juntaId = crypto.randomUUID();
-          const slugBase = makeSlug(values.nombre);
-          const slug = `${slugBase}-${juntaId.slice(0, 6)}`;
-          const created = {
-            ...values,
-            id: juntaId,
-            slug,
-            invite_token: crypto.randomUUID(),
-            admin_id: user.id,
-            estado: 'borrador' as const,
-            created_at: new Date().toISOString()
-          };
-          const schedule = generarCronograma({
-            juntaId,
-            participantes: values.participantes_max,
-            monto: values.monto_cuota,
-            frecuencia: values.frecuencia_pago,
-            fechaInicio: values.fecha_inicio
-          });
-          setData({
-            juntas: [created, ...juntas],
-            schedules: [...schedules, ...schedule],
-            members: [...members, { id: crypto.randomUUID(), junta_id: juntaId, profile_id: user.id, estado: 'activo', orden_turno: 1 }]
-          });
-          router.push(`/juntas/${juntaId}`);
+          try {
+            setLoading(true);
+            const juntaId = crypto.randomUUID();
+            const slugBase = makeSlug(values.nombre);
+            const slug = `${slugBase}-${juntaId.slice(0, 6)}`;
+            const created = {
+              ...values,
+              id: juntaId,
+              slug,
+              invite_token: crypto.randomUUID(),
+              admin_id: user.id,
+              estado: 'borrador' as const,
+              created_at: new Date().toISOString()
+            };
+            const schedule = generarCronograma({
+              juntaId,
+              participantes: values.participantes_max,
+              monto: values.monto_cuota,
+              frecuencia: values.frecuencia_pago,
+              fechaInicio: values.fecha_inicio
+            });
+
+            setData({
+              juntas: [created, ...allJuntas],
+              schedules: [...allSchedules, ...schedule],
+              members: [...allMembers, { id: crypto.randomUUID(), junta_id: juntaId, profile_id: user.id, estado: 'activo', orden_turno: 1 }]
+            });
+            router.push(`/juntas/${juntaId}`);
+          } catch (error) {
+            setErrorMsg(error instanceof Error ? error.message : 'No se pudo crear la junta. Intenta nuevamente.');
+          } finally {
+            setLoading(false);
+          }
         })}
       >
         <Input placeholder="Nombre" {...register('nombre')} />
@@ -75,7 +104,8 @@ export default function NewJuntaPage() {
           <input type="checkbox" {...register('cerrar_inscripciones')} /> Cerrar inscripciones al completar
         </label>
         {formState.errors.nombre && <p className="col-span-full text-xs text-red-500">{formState.errors.nombre.message}</p>}
-        <Button className="col-span-full">Guardar junta</Button>
+        {errorMsg && <p className="col-span-full text-xs text-red-500">{errorMsg}</p>}
+        <Button className="col-span-full" disabled={loading}>{loading ? 'Creando...' : 'Guardar junta'}</Button>
       </form>
     </Card>
   );
