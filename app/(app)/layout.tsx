@@ -1,25 +1,21 @@
 'use client';
 
-import { ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import { ReactNode, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/auth-store';
 import { AppShell } from '@/components/layout/app-shell';
 import { Button } from '@/components/ui/button';
 
 export default function PrivateLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, setUser } = useAuthStore();
 
-  if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="space-y-3 rounded-lg border bg-white p-6 text-center">
-          <p>Debes iniciar sesión para continuar.</p>
-          <Button onClick={() => router.push('/login')}>Ir a login</Button>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!user) router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
+  }, [user, router, pathname]);
+
+  if (!user) return null;
 
   return (
     <AppShell>
@@ -29,7 +25,7 @@ export default function PrivateLayout({ children }: { children: ReactNode }) {
           variant="outline"
           onClick={() => {
             setUser(null);
-            router.push('/login');
+            router.push('/');
           }}
         >
           Cerrar sesión

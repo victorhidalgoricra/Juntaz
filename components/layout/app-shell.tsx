@@ -4,19 +4,23 @@ import Link from 'next/link';
 import { ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-
-const links = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/juntas/new', label: 'Crear junta' },
-  { href: '/notifications', label: 'Notificaciones' },
-  { href: '/profile', label: 'Perfil' },
-  { href: '/settings', label: 'Configuración' }
-];
+import { useAuthStore } from '@/store/auth-store';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const user = useAuthStore((s) => s.user);
+  const links = [
+    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/juntas', label: 'Mis juntas' },
+    { href: '/juntas/new', label: 'Crear junta' },
+    { href: '/notifications', label: 'Notificaciones' },
+    { href: '/profile', label: 'Perfil' },
+    { href: '/settings', label: 'Configuración' },
+    ...(user?.global_role === 'system_admin' ? [{ href: '/admin', label: 'Backoffice' }] : [])
+  ];
+
   return (
-    <div className="min-h-screen md:grid md:grid-cols-[220px_1fr]">
+    <div className="min-h-screen md:grid md:grid-cols-[240px_1fr]">
       <aside className="border-b bg-white p-4 md:min-h-screen md:border-r md:border-b-0">
         <p className="mb-4 text-lg font-semibold text-primary">Juntas Digitales</p>
         <nav className="flex gap-2 overflow-auto md:flex-col">

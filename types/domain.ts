@@ -1,8 +1,9 @@
 export type Frecuencia = 'semanal' | 'quincenal' | 'mensual';
-export type EstadoJunta = 'borrador' | 'activa' | 'cerrada';
+export type EstadoJunta = 'borrador' | 'activa' | 'cerrada' | 'bloqueada';
 export type EstadoMiembro = 'invitado' | 'activo' | 'pendiente' | 'moroso' | 'retirado';
 export type EstadoCuota = 'pendiente' | 'pagada' | 'vencida';
 export type EstadoPago = 'pendiente_aprobacion' | 'aprobado' | 'rechazado';
+export type GlobalRole = 'user' | 'system_admin';
 
 export interface Profile {
   id: string;
@@ -11,11 +12,14 @@ export interface Profile {
   celular: string;
   dni?: string;
   foto_url?: string;
+  global_role?: GlobalRole;
 }
 
 export interface Junta {
   id: string;
   admin_id: string;
+  slug: string;
+  invite_token: string;
   nombre: string;
   descripcion?: string;
   moneda: 'PEN' | 'USD';

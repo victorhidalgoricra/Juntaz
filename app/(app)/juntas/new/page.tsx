@@ -11,6 +11,7 @@ import { createJuntaSchema } from '@/features/juntas/schemas';
 import { useAuthStore } from '@/store/auth-store';
 import { useAppStore } from '@/store/app-store';
 import { generarCronograma } from '@/services/schedule.service';
+import { makeSlug } from '@/lib/slug';
 
 export default function NewJuntaPage() {
   const router = useRouter();
@@ -34,9 +35,13 @@ export default function NewJuntaPage() {
           }
 
           const juntaId = crypto.randomUUID();
+          const slugBase = makeSlug(values.nombre);
+          const slug = `${slugBase}-${juntaId.slice(0, 6)}`;
           const created = {
             ...values,
             id: juntaId,
+            slug,
+            invite_token: crypto.randomUUID(),
             admin_id: user.id,
             estado: 'borrador' as const,
             created_at: new Date().toISOString()
