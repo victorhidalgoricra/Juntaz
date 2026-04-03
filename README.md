@@ -1,6 +1,6 @@
 # Juntas Digitales (MVP Web Comercial)
 
-MVP web de juntas/panderos con experiencia **pública primero**: el usuario puede explorar sin login y autenticarse solo cuando quiere ejecutar acciones privadas.
+MVP web de juntas digitales con experiencia **pública primero**: el usuario puede explorar sin login y autenticarse solo cuando quiere ejecutar acciones privadas.
 
 ## Rutas
 
