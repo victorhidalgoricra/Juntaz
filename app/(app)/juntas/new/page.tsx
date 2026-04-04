@@ -15,6 +15,7 @@ import { generarCronograma } from '@/services/schedule.service';
 import { makeSlug } from '@/lib/slug';
 import { generateAccessCode } from '@/lib/access-code';
 import { createJuntaRecord } from '@/services/juntas.repository';
+import { calcularSimulacionJunta } from '@/services/incentive.service';
 
 export default function NewJuntaPage() {
   const router = useRouter();
@@ -28,10 +29,25 @@ export default function NewJuntaPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const { control, register, handleSubmit, setError, formState } = useForm<z.infer<typeof createJuntaSchema>>({
-    defaultValues: { frecuencia_pago: 'semanal', visibilidad: 'privada' }
+    defaultValues: {
+      frecuencia_pago: 'semanal',
+      visibilidad: 'privada',
+      tipo_junta: 'normal',
+      incentivo_porcentaje: 5,
+      incentivo_regla: 'primero_ultimo'
+    }
   });
 
   const form = useWatch({ control });
+  const simulacion = calcularSimulacionJunta({
+    participantes: Number(form.participantes_max || 2),
+    cuotaBase: Number(form.monto_cuota || 0),
+    frecuencia: form.frecuencia_pago ?? 'semanal',
+    fechaInicio: form.fecha_inicio || new Date().toISOString(),
+    tipoJunta: form.tipo_junta ?? 'normal',
+    incentivoPorcentaje: form.incentivo_porcentaje,
+    incentivoRegla: form.incentivo_regla
+  });
 
   useEffect(() => {
     if (!user) router.replace('/login?redirect=/juntas/new');
@@ -44,7 +60,7 @@ export default function NewJuntaPage() {
       <Card className="space-y-4 p-6">
         <div>
           <h1 className="text-2xl font-semibold">Crear junta</h1>
-          <p className="text-sm text-slate-600">Define lo mínimo para lanzar tu junta en minutos.</p>
+          <p className="text-sm text-slate-600">Configura una junta normal o una junta con incentivos redistributivos.</p>
         </div>
 
         <form
@@ -63,6 +79,7 @@ export default function NewJuntaPage() {
               console.log('[Crear Junta] submit values', values);
               const juntaId = crypto.randomUUID();
               const slug = `${makeSlug(values.nombre)}-${juntaId.slice(0, 6)}`;
+              const bolsaBase = values.participantes_max * values.monto_cuota;
               const created = {
                 id: juntaId,
                 admin_id: user.id,
@@ -74,6 +91,11 @@ export default function NewJuntaPage() {
                 moneda: 'PEN' as const,
                 participantes_max: values.participantes_max,
                 monto_cuota: values.monto_cuota,
+                cuota_base: values.monto_cuota,
+                bolsa_base: bolsaBase,
+                tipo_junta: values.tipo_junta,
+                incentivo_porcentaje: values.tipo_junta === 'incentivo' ? Number(values.incentivo_porcentaje ?? 0) : 0,
+                incentivo_regla: values.tipo_junta === 'incentivo' ? values.incentivo_regla ?? 'primero_ultimo' : 'primero_ultimo',
                 premio_primero_pct: 0,
                 descuento_ultimo_pct: 0,
                 fee_plataforma_pct: 0,
@@ -120,8 +142,33 @@ export default function NewJuntaPage() {
           <label className="text-sm font-medium">Tamaño del grupo</label>
           <Input type="number" {...register('participantes_max')} />
 
-          <label className="text-sm font-medium">Aporte por turno/período</label>
+          <label className="text-sm font-medium">Cuota base por ronda</label>
           <Input type="number" {...register('monto_cuota')} />
+
+          <label className="text-sm font-medium">Tipo de junta</label>
+          <Select {...register('tipo_junta')}>
+            <option value="normal">Normal</option>
+            <option value="incentivo">Con incentivos</option>
+          </Select>
+
+          <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+            {form.tipo_junta === 'incentivo'
+              ? 'Los primeros turnos reciben menos y los últimos más. Las cuotas se redistribuyen entre participantes sin que la plataforma retenga dinero.'
+              : 'Todos aportan lo mismo y todos reciben el mismo monto base según su turno.'}
+          </div>
+
+          {form.tipo_junta === 'incentivo' && (
+            <>
+              <label className="text-sm font-medium">Porcentaje incentivo (%)</label>
+              <Input type="number" step="0.01" min="0" {...register('incentivo_porcentaje')} />
+
+              <label className="text-sm font-medium">Regla incentivo</label>
+              <Select {...register('incentivo_regla')}>
+                <option value="primero_ultimo">Solo primer y último</option>
+                <option value="escalonado">Escalonado por posición (beta)</option>
+              </Select>
+            </>
+          )}
 
           <label className="text-sm font-medium">Frecuencia de turnos</label>
           <Select {...register('frecuencia_pago')}>
@@ -154,7 +201,9 @@ export default function NewJuntaPage() {
             )}
           />
 
-          {formState.errors.nombre && <p className="text-xs text-red-500">{formState.errors.nombre.message}</p>}
+          {(formState.errors.nombre || formState.errors.incentivo_porcentaje) && (
+            <p className="text-xs text-red-500">{formState.errors.nombre?.message || formState.errors.incentivo_porcentaje?.message}</p>
+          )}
           {errorMsg && <p className="text-xs text-red-500">{errorMsg}</p>}
           <Button disabled={loading}>{loading ? 'Creando...' : 'Crear junta'}</Button>
         </form>
@@ -162,14 +211,15 @@ export default function NewJuntaPage() {
 
       <Card className="space-y-3 p-5">
         <h2 className="text-lg font-semibold">Resumen en vivo</h2>
+        <p className="text-sm text-slate-600">Tipo: <span className="font-medium capitalize">{form.tipo_junta || 'normal'}</span></p>
         <p className="text-sm text-slate-600">Grupo: <span className="font-medium">{form.participantes_max || 0}</span> personas</p>
-        <p className="text-sm text-slate-600">Aporte: <span className="font-medium">S/ {form.monto_cuota || 0}</span></p>
+        <p className="text-sm text-slate-600">Cuota base: <span className="font-medium">S/ {form.monto_cuota || 0}</span></p>
+        <p className="text-sm text-slate-600">Bolsa base: <span className="font-medium">S/ {simulacion.bolsaBase}</span></p>
+        <p className="text-sm text-slate-600">Incentivo: <span className="font-medium">{simulacion.incentivoPorcentaje}%</span></p>
         <p className="text-sm text-slate-600">Frecuencia: <span className="font-medium capitalize">{form.frecuencia_pago || '—'}</span></p>
         <p className="text-sm text-slate-600">Visibilidad: <span className="font-medium capitalize">{form.visibilidad || '—'}</span></p>
         <div className="rounded-md bg-slate-100 p-3 text-xs text-slate-600">
-          {form.visibilidad === 'publica'
-            ? 'Esta junta aparecerá en juntas disponibles para unirse.'
-            : 'Esta junta será privada y se generará un enlace para compartir.'}
+          Plataforma: no retiene dinero. Todo ajuste se redistribuye entre participantes.
         </div>
       </Card>
     </div>

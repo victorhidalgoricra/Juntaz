@@ -5,10 +5,10 @@ import { useMemo, useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { useAppStore } from '@/store/app-store';
 import { validarActivacionJunta } from '@/services/junta.service';
 import { fetchJuntaById } from '@/services/juntas.repository';
+import { calcularSimulacionJunta } from '@/services/incentive.service';
 import { Junta } from '@/types/domain';
 
 export default function JuntaDetailPage({ params }: { params: { id: string } }) {
@@ -16,12 +16,6 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
   const storeJunta = juntas.find((j) => j.id === params.id) ?? null;
   const [junta, setJunta] = useState<Junta | null>(storeJunta);
   const [loadingJunta, setLoadingJunta] = useState(!storeJunta);
-
-  const [groupSize, setGroupSize] = useState(0);
-  const [aporte, setAporte] = useState(0);
-  const [premioPrimero, setPremioPrimero] = useState(3);
-  const [descuentoUltimo, setDescuentoUltimo] = useState(3);
-  const [feePct, setFeePct] = useState(2);
 
   useEffect(() => {
     const load = async () => {
@@ -41,37 +35,20 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
     load();
   }, [storeJunta, params.id, setData, juntas]);
 
-  useEffect(() => {
-    if (!junta) return;
-    setGroupSize(junta.participantes_max);
-    setAporte(junta.monto_cuota);
-    setPremioPrimero(junta.premio_primero_pct ?? 3);
-    setDescuentoUltimo(junta.descuento_ultimo_pct ?? 3);
-    setFeePct(junta.fee_plataforma_pct ?? 2);
-  }, [junta]);
-
   const miembros = junta ? members.filter((m) => m.junta_id === junta.id) : [];
-  const bolsaSemanal = groupSize * aporte;
-  const feeCiclo = (bolsaSemanal * feePct * groupSize) / 100;
-  const ingresoCiclo = bolsaSemanal * groupSize - feeCiclo;
 
-  const rows = useMemo(
-    () =>
-      Array.from({ length: Math.max(groupSize, 0) }).map((_, index) => {
-        const turn = index + 1;
-        const extra =
-          turn === 1
-            ? (bolsaSemanal * premioPrimero) / 100
-            : turn === groupSize
-              ? -(bolsaSemanal * descuentoUltimo) / 100
-              : 0;
-
-        const perfil = turn === 1 ? 'Necesita liquidez urgente' : turn === groupSize ? 'Busca descuento' : 'Flexible';
-
-        return { turn, week: turn, aporteTotal: bolsaSemanal, recibe: bolsaSemanal + extra, extra, perfil };
-      }),
-    [groupSize, bolsaSemanal, premioPrimero, descuentoUltimo]
-  );
+  const simulacion = useMemo(() => {
+    if (!junta) return null;
+    return calcularSimulacionJunta({
+      participantes: junta.participantes_max,
+      cuotaBase: junta.cuota_base ?? junta.monto_cuota,
+      fechaInicio: junta.fecha_inicio,
+      frecuencia: junta.frecuencia_pago,
+      tipoJunta: junta.tipo_junta ?? 'normal',
+      incentivoPorcentaje: junta.incentivo_porcentaje ?? 0,
+      incentivoRegla: junta.incentivo_regla ?? 'primero_ultimo'
+    });
+  }, [junta]);
 
   const shareUrl = junta
     ? typeof window !== 'undefined'
@@ -80,7 +57,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
     : '';
 
   if (loadingJunta) return <Card>Cargando junta...</Card>;
-  if (!junta) return <Card><p className="text-sm text-slate-600">Junta no encontrada.</p></Card>;
+  if (!junta || !simulacion) return <Card><p className="text-sm text-slate-600">Junta no encontrada.</p></Card>;
 
   return (
     <div className="space-y-4">
@@ -88,25 +65,14 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-2xl font-semibold">{junta.nombre}</h1>
-            <p className="text-sm text-slate-500">Simulador y configuración de ciclo · Visibilidad: {junta.visibilidad}</p>
+            <p className="text-sm text-slate-500">Simulación financiera sin retención de plataforma</p>
           </div>
           <div className="flex items-center gap-2">
             <Badge>{junta.estado}</Badge>
-            <Button variant="outline" onClick={() => { try { navigator.clipboard.writeText(shareUrl); alert('Enlace copiado'); } catch { alert(shareUrl); } }}>Compartir enlace</Button>
+            <Badge>{junta.tipo_junta === 'incentivo' ? 'Con incentivos' : 'Normal'}</Badge>
+            <Button variant="outline" onClick={() => { try { navigator.clipboard.writeText(shareUrl); alert('Enlace copiado'); } catch { alert(shareUrl); } }}>Copiar enlace</Button>
             {junta.visibilidad === 'privada' && junta.access_code && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  try {
-                    navigator.clipboard.writeText(junta.access_code ?? '');
-                    alert('Código copiado');
-                  } catch {
-                    alert(junta.access_code);
-                  }
-                }}
-              >
-                Copiar código
-              </Button>
+              <Button variant="outline" onClick={() => { try { navigator.clipboard.writeText(junta.access_code ?? ''); alert('Código copiado'); } catch { alert(junta.access_code); } }}>Copiar código</Button>
             )}
             <Button
               variant="ghost"
@@ -118,56 +84,72 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
                   alert((error as Error).message);
                 }
               }}
-            >Activar junta</Button>
+            >
+              Activar junta
+            </Button>
           </div>
         </div>
       </Card>
 
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <Card><p className="text-xs text-slate-500">Bolsa base por ronda</p><p className="text-2xl font-bold">S/ {simulacion.bolsaBase.toFixed(2)}</p></Card>
+        <Card><p className="text-xs text-slate-500">Cuota base por ronda</p><p className="text-2xl font-bold">S/ {simulacion.cuotaBase.toFixed(2)}</p></Card>
+        <Card><p className="text-xs text-slate-500">Incentivo</p><p className="text-2xl font-bold">{simulacion.incentivoPorcentaje.toFixed(2)}%</p></Card>
+        <Card><p className="text-xs text-slate-500">Plataforma</p><p className="text-2xl font-bold">No retiene</p></Card>
+      </div>
 
-      {junta.visibilidad === 'privada' && (
+      {junta.visibilidad === 'privada' ? (
         <Card className="space-y-2">
           <p className="text-sm font-medium">Acceso privado</p>
-          <p className="text-xs text-slate-500">Enlace de invitación: {shareUrl}</p>
-          <p className="text-xs text-slate-500">Código de acceso: <span className="font-semibold text-slate-700">{junta.access_code ?? 'Sin código'}</span></p>
+          <p className="text-xs text-slate-500">Enlace: {shareUrl}</p>
+          <p className="text-xs text-slate-500">Código: <span className="font-semibold text-slate-700">{junta.access_code ?? 'Sin código'}</span></p>
         </Card>
-      )}
-
-      {junta.visibilidad === 'publica' && (
+      ) : (
         <Card className="space-y-2">
           <p className="text-sm font-medium">Junta pública</p>
-          <p className="text-xs text-slate-500">Esta junta aparece en /explorar para nuevos participantes.</p>
+          <p className="text-xs text-slate-500">Visible en el catálogo de Juntas disponibles.</p>
           <Button variant="outline">Ver como usuario</Button>
         </Card>
       )}
-      <Card className="space-y-3">
-        <h2 className="font-semibold">Configuración financiera</h2>
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-          <Input type="number" value={groupSize} onChange={(e) => setGroupSize(Number(e.target.value || 0))} placeholder="Tamaño grupo" />
-          <Input type="number" value={aporte} onChange={(e) => setAporte(Number(e.target.value || 0))} placeholder="Aporte" />
-          <Input type="number" value={premioPrimero} onChange={(e) => setPremioPrimero(Number(e.target.value || 0))} placeholder="Premio primero %" />
-          <Input type="number" value={descuentoUltimo} onChange={(e) => setDescuentoUltimo(Number(e.target.value || 0))} placeholder="Descuento último %" />
-          <Input type="number" value={feePct} onChange={(e) => setFeePct(Number(e.target.value || 0))} placeholder="Fee plataforma %" />
-        </div>
-      </Card>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <Card><p className="text-xs text-slate-500">Bolsa semanal bruta</p><p className="text-2xl font-bold">S/ {bolsaSemanal.toFixed(2)}</p></Card>
-        <Card><p className="text-xs text-slate-500">Fee plataforma/ciclo</p><p className="text-2xl font-bold">S/ {feeCiclo.toFixed(2)}</p></Card>
-        <Card><p className="text-xs text-slate-500">Ingreso por grupo/ciclo</p><p className="text-2xl font-bold">S/ {ingresoCiclo.toFixed(2)}</p></Card>
-      </div>
 
       <Card>
-        <h2 className="mb-3 font-semibold">Tabla de turnos</h2>
+        <h2 className="mb-3 font-semibold">Cronograma y simulación</h2>
         <div className="overflow-auto">
           <table className="min-w-full text-sm">
-            <thead><tr className="border-b text-left text-slate-500"><th className="py-2">Turno</th><th>Semana</th><th>Aporte total/semana</th><th>Recibe (S/)</th><th>Aporte extra/descuento</th><th>Perfil ideal</th></tr></thead>
+            <thead>
+              <tr className="border-b text-left text-slate-500">
+                <th className="py-2">Turno</th>
+                <th>Fecha ronda</th>
+                <th>Cuota/ronda</th>
+                <th>Total aportado ciclo</th>
+                <th>Monto recibido</th>
+                <th>Ajuste</th>
+                <th>Beneficio/Costo neto</th>
+                <th>Perfil sugerido</th>
+              </tr>
+            </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.turn} className="border-b"><td className="py-2">#{row.turn}</td><td>{row.week}</td><td>S/ {row.aporteTotal.toFixed(2)}</td><td>S/ {row.recibe.toFixed(2)}</td><td className={row.extra >= 0 ? 'text-blue-700' : 'text-red-600'}>{row.extra >= 0 ? '+' : ''}S/ {row.extra.toFixed(2)}</td><td>{row.perfil}</td></tr>
+              {simulacion.rows.map((row) => (
+                <tr key={row.turno} className="border-b">
+                  <td className="py-2">#{row.turno}</td>
+                  <td>{row.fechaRonda}</td>
+                  <td>S/ {row.cuotaPorRonda.toFixed(2)}</td>
+                  <td>S/ {row.totalAportadoCiclo.toFixed(2)}</td>
+                  <td>S/ {row.montoRecibido.toFixed(2)}</td>
+                  <td className={row.ajuste >= 0 ? 'text-emerald-700' : 'text-amber-700'}>{row.ajuste >= 0 ? '+' : ''}S/ {row.ajuste.toFixed(2)}</td>
+                  <td className={row.neto >= 0 ? 'text-emerald-700' : 'text-amber-700'}>{row.neto >= 0 ? '+' : ''}S/ {row.neto.toFixed(2)}</td>
+                  <td>{row.perfil}</td>
+                </tr>
               ))}
             </tbody>
           </table>
         </div>
+      </Card>
+
+      <Card className="grid gap-2 text-sm text-slate-600 md:grid-cols-3">
+        <p>Total aportado por el grupo: <span className="font-semibold text-slate-800">S/ {simulacion.totalAportes.toFixed(2)}</span></p>
+        <p>Total recibido por el grupo: <span className="font-semibold text-slate-800">S/ {simulacion.totalRecibido.toFixed(2)}</span></p>
+        <p>Balance neto del sistema: <span className="font-semibold text-slate-800">S/ {simulacion.balance.toFixed(2)}</span></p>
       </Card>
 
       <div className="flex flex-wrap gap-2">

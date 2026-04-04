@@ -1,5 +1,7 @@
 export type Frecuencia = 'semanal' | 'quincenal' | 'mensual';
 export type EstadoJunta = 'borrador' | 'activa' | 'cerrada' | 'bloqueada';
+export type TipoJunta = 'normal' | 'incentivo';
+export type IncentivoRegla = 'primero_ultimo' | 'escalonado';
 export type EstadoMiembro = 'invitado' | 'activo' | 'pendiente' | 'moroso' | 'retirado';
 export type EstadoCuota = 'pendiente' | 'pagada' | 'vencida';
 export type EstadoPago = 'pendiente_aprobacion' | 'aprobado' | 'rechazado';
@@ -21,6 +23,11 @@ export interface Junta {
   slug: string;
   invite_token: string;
   access_code?: string;
+  tipo_junta?: TipoJunta;
+  incentivo_porcentaje?: number;
+  incentivo_regla?: IncentivoRegla;
+  cuota_base?: number;
+  bolsa_base?: number;
   nombre: string;
   descripcion?: string;
   moneda: 'PEN' | 'USD';

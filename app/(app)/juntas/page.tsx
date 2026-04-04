@@ -180,6 +180,8 @@ export default function JuntasDisponiblesPage() {
                   <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
                     <p><span className="font-medium">Grupo:</span> {j.participantes_max}</p>
                     <p><span className="font-medium">Aporte:</span> S/ {j.monto_cuota}</p>
+                    <p><span className="font-medium">Tipo:</span> {j.tipo_junta === 'incentivo' ? 'Con incentivos' : 'Normal'}</p>
+                    <p><span className="font-medium">Incentivo:</span> {Number(j.incentivo_porcentaje ?? 0)}%</p>
                     <p><span className="font-medium">Frecuencia:</span> {j.frecuencia_pago}</p>
                     <p><span className="font-medium">Estado:</span> {j.estado}</p>
                     <p className="col-span-2"><span className="font-medium">Inicio:</span> {j.fecha_inicio}</p>
