@@ -180,6 +180,15 @@ export async function joinJuntaAsParticipant(params: { juntaId: string; profileI
   return { ok: true as const, data: member as JuntaMember };
 }
 
+export async function leaveJuntaAsParticipant(params: { juntaId: string }) {
+  if (!hasSupabase || !supabase) return { ok: true as const };
+
+  const { error } = await supabase.schema('public').rpc('leave_junta', { p_junta_id: params.juntaId });
+  if (error) return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };
+
+  return { ok: true as const };
+}
+
 export async function deleteDraftJunta(params: { juntaId: string; userId: string }) {
   if (!hasSupabase || !supabase) return { ok: true as const };
 
@@ -187,7 +196,7 @@ export async function deleteDraftJunta(params: { juntaId: string; userId: string
   if (!juntaResult.ok || !juntaResult.data) return { ok: false as const, message: 'No se encontró la junta.' };
 
   if (juntaResult.data.admin_id !== params.userId) return { ok: false as const, message: 'Solo el creador puede eliminar esta junta.' };
-  if (juntaResult.data.estado !== 'borrador') return { ok: false as const, message: 'No puedes eliminar una junta activa. Primero debes cerrarla o desactivarla.' };
+  if (juntaResult.data.estado === 'activa') return { ok: false as const, message: 'No puedes eliminar una junta activa.' };
 
   const { error } = await supabase.schema('public').from('juntas').update({ estado: 'cerrada' }).eq('id', params.juntaId).eq('admin_id', params.userId);
   if (error) return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };

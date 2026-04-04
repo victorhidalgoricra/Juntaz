@@ -120,28 +120,30 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
                 >
                   Activar junta
                 </Button>
-                <Button
-                  variant="destructive"
-                  onClick={async () => {
-                    const confirmDelete = window.confirm('¿Seguro que deseas eliminar esta junta? Esta acción no se puede deshacer.');
-                    if (!confirmDelete || !user) return;
+                {junta.estado !== 'activa' && (
+                  <Button
+                    variant="destructive"
+                    onClick={async () => {
+                      const confirmDelete = window.confirm('¿Seguro que deseas eliminar esta junta? Esta acción no se puede deshacer.');
+                      if (!confirmDelete || !user) return;
 
-                    const result = await deleteDraftJunta({ juntaId: junta.id, userId: user.id });
-                    if (!result.ok) {
-                      alert(result.message);
-                      return;
-                    }
+                      const result = await deleteDraftJunta({ juntaId: junta.id, userId: user.id });
+                      if (!result.ok) {
+                        alert(result.message);
+                        return;
+                      }
 
-                    setData({
-                      juntas: juntas.filter((j) => j.id !== junta.id),
-                      members: members.filter((m) => m.junta_id !== junta.id)
-                    });
-                    alert('Junta eliminada correctamente.');
-                    window.location.href = '/juntas';
-                  }}
-                >
-                  Eliminar junta
-                </Button>
+                      setData({
+                        juntas: juntas.filter((j) => j.id !== junta.id),
+                        members: members.filter((m) => m.junta_id !== junta.id)
+                      });
+                      alert('Junta eliminada correctamente.');
+                      window.location.href = '/juntas';
+                    }}
+                  >
+                    Eliminar junta
+                  </Button>
+                )}
               </>
             )}
           </div>

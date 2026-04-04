@@ -24,6 +24,7 @@ export interface Junta {
   invite_token: string;
   access_code?: string;
   integrantes_actuales?: number;
+  is_member_current_user?: boolean;
   tipo_junta?: TipoJunta;
   incentivo_porcentaje?: number;
   incentivo_regla?: IncentivoRegla;

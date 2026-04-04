@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/store/auth-store';
 import { useAppStore } from '@/store/app-store';
-import { fetchAvailableJuntas, findJuntaByAccessCode, joinJuntaAsParticipant } from '@/services/juntas.repository';
+import { fetchAvailableJuntas, findJuntaByAccessCode, joinJuntaAsParticipant, leaveJuntaAsParticipant } from '@/services/juntas.repository';
 
 const filters = [
   { id: 'todas', label: 'Todas' },
@@ -32,6 +32,7 @@ export default function JuntasDisponiblesPage() {
   const [codeError, setCodeError] = useState<string | null>(null);
   const [joinErrorByJunta, setJoinErrorByJunta] = useState<Record<string, string>>({});
   const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [leavingId, setLeavingId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterId>('todas');
 
   useEffect(() => {
@@ -63,7 +64,10 @@ export default function JuntasDisponiblesPage() {
     [allJuntas]
   );
 
-  const membershipMap = useMemo(() => new Set(allMembers.filter((m) => m.profile_id === user?.id).map((m) => m.junta_id)), [allMembers, user?.id]);
+  const membershipMap = useMemo(
+    () => new Set(allJuntas.filter((junta) => junta.is_member_current_user).map((junta) => junta.id)),
+    [allJuntas]
+  );
 
   const visibleJuntas = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -134,9 +138,33 @@ export default function JuntasDisponiblesPage() {
 
     setData({
       members: [...allMembers, result.data],
-      juntas: allJuntas.map((j) => (j.id === juntaId ? { ...j, integrantes_actuales: Number(j.integrantes_actuales ?? 0) + 1 } : j))
+      juntas: allJuntas.map((j) => (j.id === juntaId ? { ...j, integrantes_actuales: Number(j.integrantes_actuales ?? 0) + 1, is_member_current_user: true } : j))
     });
     setJoiningId(null);
+  };
+
+  const handleLeave = async (juntaId: string) => {
+    setJoinErrorByJunta((prev) => ({ ...prev, [juntaId]: '' }));
+    const junta = allJuntas.find((item) => item.id === juntaId);
+    if (!junta) return;
+    if (junta.estado === 'activa') {
+      setJoinErrorByJunta((prev) => ({ ...prev, [juntaId]: 'No puedes retirarte de una junta activa.' }));
+      return;
+    }
+
+    setLeavingId(juntaId);
+    const result = await leaveJuntaAsParticipant({ juntaId });
+    if (!result.ok) {
+      setJoinErrorByJunta((prev) => ({ ...prev, [juntaId]: result.message }));
+      setLeavingId(null);
+      return;
+    }
+
+    setData({
+      members: allMembers.filter((member) => !(member.junta_id === juntaId && member.profile_id === user.id)),
+      juntas: allJuntas.map((item) => (item.id === juntaId ? { ...item, integrantes_actuales: Math.max(Number(item.integrantes_actuales ?? 0) - 1, 0), is_member_current_user: false } : item))
+    });
+    setLeavingId(null);
   };
 
   return (
@@ -198,12 +226,13 @@ export default function JuntasDisponiblesPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {visibleJuntas.map((j) => {
-            const isMine = j.admin_id === user.id || membershipMap.has(j.id);
+            const isOwner = j.admin_id === user.id;
+            const isMember = membershipMap.has(j.id);
             const description = j.descripcion?.trim() || 'Junta sin descripción aún.';
             const miembrosActuales = countByJunta.get(j.id) ?? 0;
             const cupoCompleto = miembrosActuales >= j.participantes_max;
             const estadoVisual = j.estado === 'activa' ? 'activa' : cupoCompleto ? 'completa' : 'borrador';
-            const canJoin = !isMine && !cupoCompleto;
+            const canJoin = !isOwner && !isMember && !cupoCompleto;
 
             return (
               <Card key={j.id} className="flex h-full flex-col justify-between gap-4 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
@@ -225,12 +254,23 @@ export default function JuntasDisponiblesPage() {
 
                   {cupoCompleto && <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-700">Cupo completo</div>}
                   {j.visibilidad === 'privada' && <div className="rounded-md bg-slate-100 p-2 text-xs text-slate-700">Requiere enlace o código de acceso.</div>}
+                  {isMember && <div className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">Participando · Ya te uniste</div>}
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
                     <Link href={`/juntas/${j.id}`}><Button variant="outline">Ver detalle</Button></Link>
-                    <Button disabled={!canJoin || joiningId === j.id} onClick={() => handleJoin(j.id, j.access_code)}>{joiningId === j.id ? 'Uniéndome...' : 'Unirme'}</Button>
+                    {!isMember ? (
+                      <Button disabled={!canJoin || joiningId === j.id} onClick={() => handleJoin(j.id, j.access_code)}>{joiningId === j.id ? 'Uniéndome...' : 'Unirme'}</Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        disabled={j.estado === 'activa' || leavingId === j.id}
+                        onClick={() => handleLeave(j.id)}
+                      >
+                        {j.estado === 'activa' ? 'Ya te uniste' : leavingId === j.id ? 'Retirándome...' : 'Retirarme'}
+                      </Button>
+                    )}
                   </div>
                   {joinErrorByJunta[j.id] && <p className="text-xs text-red-600">{joinErrorByJunta[j.id]}</p>}
                 </div>
