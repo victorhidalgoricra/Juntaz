@@ -122,7 +122,7 @@ export default function NewJuntaPage() {
               setData({
                 juntas: [created, ...allJuntas],
                 schedules: [...allSchedules, ...schedule],
-                members: [...allMembers, { id: crypto.randomUUID(), junta_id: juntaId, profile_id: user.id, estado: 'activo', orden_turno: 1 }]
+                members: [...allMembers, { id: crypto.randomUUID(), junta_id: juntaId, profile_id: user.id, estado: 'activo', rol: 'admin', orden_turno: 1 }]
               });
 
               router.push(`/juntas/${juntaId}`);

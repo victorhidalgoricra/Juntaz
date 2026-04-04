@@ -179,3 +179,18 @@ export async function joinJuntaAsParticipant(params: { juntaId: string; profileI
   const member = Array.isArray(data) ? (data[0] as JuntaMember | undefined) : (data as JuntaMember | null);
   return { ok: true as const, data: member as JuntaMember };
 }
+
+export async function deleteDraftJunta(params: { juntaId: string; userId: string }) {
+  if (!hasSupabase || !supabase) return { ok: true as const };
+
+  const juntaResult = await fetchJuntaById(params.juntaId);
+  if (!juntaResult.ok || !juntaResult.data) return { ok: false as const, message: 'No se encontró la junta.' };
+
+  if (juntaResult.data.admin_id !== params.userId) return { ok: false as const, message: 'Solo el creador puede eliminar esta junta.' };
+  if (juntaResult.data.estado !== 'borrador') return { ok: false as const, message: 'No puedes eliminar una junta activa. Primero debes cerrarla o desactivarla.' };
+
+  const { error } = await supabase.schema('public').from('juntas').update({ estado: 'cerrada' }).eq('id', params.juntaId).eq('admin_id', params.userId);
+  if (error) return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };
+
+  return { ok: true as const };
+}

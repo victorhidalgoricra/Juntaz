@@ -6,12 +6,15 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/store/app-store';
+import { useAuthStore } from '@/store/auth-store';
 import { validarActivacionJunta } from '@/services/junta.service';
-import { fetchJuntaById, fetchMembersByJuntaIds } from '@/services/juntas.repository';
+import { deleteDraftJunta, fetchJuntaById, fetchMembersByJuntaIds } from '@/services/juntas.repository';
 import { calcularSimulacionJunta } from '@/services/incentive.service';
 import { Junta } from '@/types/domain';
+import { hasSupabase } from '@/lib/env';
 
 export default function JuntaDetailPage({ params }: { params: { id: string } }) {
+  const user = useAuthStore((s) => s.user);
   const { juntas, members, setData } = useAppStore();
   const storeJunta = juntas.find((j) => j.id === params.id) ?? null;
   const [junta, setJunta] = useState<Junta | null>(storeJunta);
@@ -30,9 +33,11 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
         }
       }
 
-      const membersResult = await fetchMembersByJuntaIds([params.id]);
-      if (membersResult.ok) {
-        setData({ members: membersResult.data });
+      if (hasSupabase) {
+        const membersResult = await fetchMembersByJuntaIds([params.id]);
+        if (membersResult.ok && membersResult.data.length > 0) {
+          setData({ members: membersResult.data });
+        }
       }
 
       setLoadingJunta(false);
@@ -41,7 +46,16 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
   }, [storeJunta, params.id, setData, juntas]);
 
   const miembros = useMemo(() => members.filter((m) => m.junta_id === params.id), [members, params.id]);
-  const miembrosActivos = miembros.filter((member) => member.estado === 'activo');
+  const miembrosNormalizados = useMemo(() => {
+    if (!junta) return miembros;
+    const tieneAdmin = miembros.some((m) => m.profile_id === junta.admin_id);
+    if (tieneAdmin) return miembros;
+    return [
+      { id: `local-admin-${junta.id}`, junta_id: junta.id, profile_id: junta.admin_id, estado: 'activo' as const, rol: 'admin' as const, orden_turno: 1 },
+      ...miembros
+    ];
+  }, [junta, miembros]);
+  const miembrosActivos = miembrosNormalizados.filter((member) => member.estado === 'activo');
   const miembrosActuales = miembrosActivos.length;
 
   const simulacion = useMemo(() => {
@@ -69,6 +83,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
   const faltantes = Math.max(junta.participantes_max - miembrosActuales, 0);
   const progreso = Math.min((miembrosActuales / junta.participantes_max) * 100, 100);
   const activable = miembrosActuales >= junta.participantes_max;
+  const isCreator = user?.id === junta.admin_id;
 
   return (
     <div className="space-y-4">
@@ -88,21 +103,47 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
             {junta.visibilidad === 'privada' && junta.access_code && (
               <Button variant="outline" onClick={() => { try { navigator.clipboard.writeText(junta.access_code ?? ''); alert('Código copiado'); } catch { alert(junta.access_code); } }}>Copiar código</Button>
             )}
-            <Button
-              variant="ghost"
-              disabled={!activable}
-              title={activable ? 'Lista para activar' : 'Completa todos los integrantes para activar la junta'}
-              onClick={() => {
-                try {
-                  validarActivacionJunta(miembrosActuales, junta.participantes_max);
-                  setData({ juntas: juntas.map((j) => (j.id === junta.id ? { ...j, estado: 'activa' } : j)) });
-                } catch (error) {
-                  alert((error as Error).message);
-                }
-              }}
-            >
-              Activar junta
-            </Button>
+            {isCreator && (
+              <>
+                <Button
+                  variant="ghost"
+                  disabled={!activable}
+                  title={activable ? 'Lista para activar' : 'Completa todos los integrantes para activar la junta'}
+                  onClick={() => {
+                    try {
+                      validarActivacionJunta(miembrosActuales, junta.participantes_max);
+                      setData({ juntas: juntas.map((j) => (j.id === junta.id ? { ...j, estado: 'activa' } : j)) });
+                    } catch (error) {
+                      alert((error as Error).message);
+                    }
+                  }}
+                >
+                  Activar junta
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    const confirmDelete = window.confirm('¿Seguro que deseas eliminar esta junta? Esta acción no se puede deshacer.');
+                    if (!confirmDelete || !user) return;
+
+                    const result = await deleteDraftJunta({ juntaId: junta.id, userId: user.id });
+                    if (!result.ok) {
+                      alert(result.message);
+                      return;
+                    }
+
+                    setData({
+                      juntas: juntas.filter((j) => j.id !== junta.id),
+                      members: members.filter((m) => m.junta_id !== junta.id)
+                    });
+                    alert('Junta eliminada correctamente.');
+                    window.location.href = '/juntas';
+                  }}
+                >
+                  Eliminar junta
+                </Button>
+              </>
+            )}
           </div>
         </div>
         {!activable && <p className="text-xs text-amber-700">Completa todos los integrantes para activar la junta.</p>}
@@ -124,14 +165,14 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
 
       <Card>
         <h2 className="mb-2 font-semibold">Integrantes unidos</h2>
-        {miembros.length === 0 ? (
+        {miembrosNormalizados.length === 0 ? (
           <p className="text-sm text-slate-600">Aún no hay integrantes registrados.</p>
         ) : (
           <div className="space-y-2">
-            {miembros.map((member) => (
+            {miembrosNormalizados.map((member) => (
               <div key={member.id} className="flex items-center justify-between rounded-md border p-2 text-sm">
-                <p className="font-medium">{member.profile_id}</p>
-                <p className="text-slate-600">Estado: {member.estado} · Turno: {member.orden_turno}</p>
+                <p className="font-medium">{member.profile_id === junta.admin_id ? 'Creador (admin)' : member.profile_id}</p>
+                <p className="text-slate-600">Rol: {member.rol ?? 'participante'} · Estado: {member.estado} · Turno: {member.orden_turno}</p>
               </div>
             ))}
           </div>
