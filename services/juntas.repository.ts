@@ -29,9 +29,33 @@ export async function createJuntaRecord(junta: Junta) {
     estado: junta.estado
   });
 
-  if (error) {
-    return { ok: false as const, message: error.message };
-  }
+  if (error) return { ok: false as const, message: error.message };
+
+  await supabase.from('junta_members').upsert({
+    junta_id: junta.id,
+    profile_id: junta.admin_id,
+    estado: 'activo',
+    rol: 'admin',
+    orden_turno: 1
+  });
 
   return { ok: true as const, source: 'supabase' as const };
+}
+
+export async function fetchMyJuntas(adminId: string) {
+  if (!hasSupabase || !supabase) return { ok: true as const, data: [] as Junta[] };
+
+  const { data, error } = await supabase.from('juntas').select('*').eq('admin_id', adminId).order('created_at', { ascending: false });
+  if (error) return { ok: false as const, message: error.message };
+
+  return { ok: true as const, data: (data ?? []) as Junta[] };
+}
+
+export async function fetchJuntaById(id: string) {
+  if (!hasSupabase || !supabase) return { ok: true as const, data: null as Junta | null };
+
+  const { data, error } = await supabase.from('juntas').select('*').eq('id', id).maybeSingle();
+  if (error) return { ok: false as const, message: error.message };
+
+  return { ok: true as const, data: (data as Junta | null) ?? null };
 }

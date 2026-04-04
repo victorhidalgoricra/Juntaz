@@ -1,14 +1,35 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
 import { useAppStore } from '@/store/app-store';
+import { fetchMyJuntas } from '@/services/juntas.repository';
 
 export default function MisJuntasPage() {
   const user = useAuthStore((s) => s.user);
   const allJuntas = useAppStore((s) => (Array.isArray(s.juntas) ? s.juntas : []));
+  const setData = useAppStore((s) => s.setData);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!user) return;
+      setLoading(true);
+      setError(null);
+      const result = await fetchMyJuntas(user.id);
+      if (result.ok) {
+        if (result.data.length > 0) setData({ juntas: result.data });
+      } else {
+        setError(result.message);
+      }
+      setLoading(false);
+    };
+    load();
+  }, [user, setData]);
 
   if (!user) {
     return (
@@ -31,7 +52,10 @@ export default function MisJuntasPage() {
         <Link href="/juntas/new"><Button>Nueva junta</Button></Link>
       </div>
 
-      {juntas.length === 0 ? (
+      {loading && <Card>Cargando juntas...</Card>}
+      {error && <Card><p className="text-red-600 text-sm">Error cargando juntas: {error}</p></Card>}
+
+      {!loading && !error && (juntas.length === 0 ? (
         <Card className="space-y-2">
           <p className="font-medium">Aún no tienes juntas</p>
           <p className="text-sm text-slate-600">Crea tu primera junta en menos de 2 minutos.</p>
@@ -46,7 +70,7 @@ export default function MisJuntasPage() {
             </Card>
           ))}
         </div>
-      )}
+      ))}
     </div>
   );
 }

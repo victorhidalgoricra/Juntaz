@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
 import { resolveGlobalRole } from '@/services/auth-role.service';
 import { useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { hasSupabase } from '@/lib/env';
 
 export function LoginPageClient() {
   const router = useRouter();
@@ -35,17 +37,23 @@ export function LoginPageClient() {
           }
 
           try {
+            if (hasSupabase && supabase) {
+              const { data, error } = await supabase.auth.signInWithPassword({ email: values.email, password: values.password });
+              if (error) throw error;
+              const user = data.user;
+              if (!user) throw new Error('No se pudo obtener sesión.');
+
+              const globalRole = await resolveGlobalRole(values.email);
+              setUser({ id: user.id, email: values.email, nombre: user.user_metadata?.full_name ?? values.email.split('@')[0], celular: '', global_role: globalRole });
+              router.push(redirect);
+              return;
+            }
+
             const globalRole = await resolveGlobalRole(values.email);
-            setUser({
-              id: crypto.randomUUID(),
-              email: values.email,
-              nombre: values.email.split('@')[0],
-              celular: '',
-              global_role: globalRole
-            });
+            setUser({ id: crypto.randomUUID(), email: values.email, nombre: values.email.split('@')[0], celular: '', global_role: globalRole });
             router.push(redirect);
-          } catch {
-            setAuthError('No se pudo iniciar sesión en este momento. Intenta nuevamente.');
+          } catch (error) {
+            setAuthError(error instanceof Error ? error.message : 'No se pudo iniciar sesión en este momento. Intenta nuevamente.');
           }
         })}
       >

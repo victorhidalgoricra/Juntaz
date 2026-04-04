@@ -8,16 +8,38 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useAppStore } from '@/store/app-store';
 import { validarActivacionJunta } from '@/services/junta.service';
+import { fetchJuntaById } from '@/services/juntas.repository';
+import { Junta } from '@/types/domain';
 
 export default function JuntaDetailPage({ params }: { params: { id: string } }) {
   const { juntas, members, setData } = useAppStore();
-  const junta = juntas.find((j) => j.id === params.id) ?? null;
+  const storeJunta = juntas.find((j) => j.id === params.id) ?? null;
+  const [junta, setJunta] = useState<Junta | null>(storeJunta);
+  const [loadingJunta, setLoadingJunta] = useState(!storeJunta);
 
   const [groupSize, setGroupSize] = useState(0);
   const [aporte, setAporte] = useState(0);
   const [premioPrimero, setPremioPrimero] = useState(3);
   const [descuentoUltimo, setDescuentoUltimo] = useState(3);
   const [feePct, setFeePct] = useState(2);
+
+  useEffect(() => {
+    const load = async () => {
+      if (storeJunta) {
+        setJunta(storeJunta);
+        setLoadingJunta(false);
+        return;
+      }
+      setLoadingJunta(true);
+      const result = await fetchJuntaById(params.id);
+      if (result.ok && result.data) {
+        setJunta(result.data);
+        setData({ juntas: [result.data, ...juntas.filter((j) => j.id !== result.data!.id)] });
+      }
+      setLoadingJunta(false);
+    };
+    load();
+  }, [storeJunta, params.id, setData, juntas]);
 
   useEffect(() => {
     if (!junta) return;
@@ -46,14 +68,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
 
         const perfil = turn === 1 ? 'Necesita liquidez urgente' : turn === groupSize ? 'Busca descuento' : 'Flexible';
 
-        return {
-          turn,
-          week: turn,
-          aporteTotal: bolsaSemanal,
-          recibe: bolsaSemanal + extra,
-          extra,
-          perfil
-        };
+        return { turn, week: turn, aporteTotal: bolsaSemanal, recibe: bolsaSemanal + extra, extra, perfil };
       }),
     [groupSize, bolsaSemanal, premioPrimero, descuentoUltimo]
   );
@@ -64,13 +79,8 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
       : `/junta/${junta.slug}`
     : '';
 
-  if (!junta) {
-    return (
-      <Card>
-        <p className="text-sm text-slate-600">Junta no encontrada.</p>
-      </Card>
-    );
-  }
+  if (loadingJunta) return <Card>Cargando junta...</Card>;
+  if (!junta) return <Card><p className="text-sm text-slate-600">Junta no encontrada.</p></Card>;
 
   return (
     <div className="space-y-4">
@@ -93,9 +103,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
                   alert((error as Error).message);
                 }
               }}
-            >
-              Activar junta
-            </Button>
+            >Activar junta</Button>
           </div>
         </div>
       </Card>
@@ -109,27 +117,6 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
           <Input type="number" value={descuentoUltimo} onChange={(e) => setDescuentoUltimo(Number(e.target.value || 0))} placeholder="Descuento último %" />
           <Input type="number" value={feePct} onChange={(e) => setFeePct(Number(e.target.value || 0))} placeholder="Fee plataforma %" />
         </div>
-        <Button
-          variant="outline"
-          onClick={() =>
-            setData({
-              juntas: juntas.map((j) =>
-                j.id === junta.id
-                  ? {
-                      ...j,
-                      participantes_max: groupSize,
-                      monto_cuota: aporte,
-                      premio_primero_pct: premioPrimero,
-                      descuento_ultimo_pct: descuentoUltimo,
-                      fee_plataforma_pct: feePct
-                    }
-                  : j
-              )
-            })
-          }
-        >
-          Guardar configuración
-        </Button>
       </Card>
 
       <div className="grid gap-3 md:grid-cols-3">
@@ -142,26 +129,10 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
         <h2 className="mb-3 font-semibold">Tabla de turnos</h2>
         <div className="overflow-auto">
           <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-slate-500">
-                <th className="py-2">Turno</th>
-                <th>Semana</th>
-                <th>Aporte total/semana</th>
-                <th>Recibe (S/)</th>
-                <th>Aporte extra/descuento</th>
-                <th>Perfil ideal</th>
-              </tr>
-            </thead>
+            <thead><tr className="border-b text-left text-slate-500"><th className="py-2">Turno</th><th>Semana</th><th>Aporte total/semana</th><th>Recibe (S/)</th><th>Aporte extra/descuento</th><th>Perfil ideal</th></tr></thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.turn} className="border-b">
-                  <td className="py-2">#{row.turn}</td>
-                  <td>{row.week}</td>
-                  <td>S/ {row.aporteTotal.toFixed(2)}</td>
-                  <td>S/ {row.recibe.toFixed(2)}</td>
-                  <td className={row.extra >= 0 ? 'text-blue-700' : 'text-red-600'}>{row.extra >= 0 ? '+' : ''}S/ {row.extra.toFixed(2)}</td>
-                  <td>{row.perfil}</td>
-                </tr>
+                <tr key={row.turn} className="border-b"><td className="py-2">#{row.turn}</td><td>{row.week}</td><td>S/ {row.aporteTotal.toFixed(2)}</td><td>S/ {row.recibe.toFixed(2)}</td><td className={row.extra >= 0 ? 'text-blue-700' : 'text-red-600'}>{row.extra >= 0 ? '+' : ''}S/ {row.extra.toFixed(2)}</td><td>{row.perfil}</td></tr>
               ))}
             </tbody>
           </table>
