@@ -29,6 +29,7 @@ export async function createJuntaRecord(junta: Junta) {
     admin_id: junta.admin_id,
     slug: junta.slug,
     invite_token: junta.invite_token,
+    access_code: junta.access_code ?? null,
     nombre: junta.nombre,
     descripcion: junta.descripcion,
     moneda: junta.moneda,
@@ -92,4 +93,29 @@ export async function fetchPublicJuntas() {
 
   if (error) return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };
   return { ok: true as const, data: (data ?? []) as Junta[] };
+}
+
+export async function fetchAvailableJuntas(userId: string) {
+  if (!hasSupabase || !supabase) return { ok: true as const, data: [] as Junta[] };
+
+  const { data, error } = await supabase
+    .schema('public')
+    .from('juntas')
+    .select('*')
+    .or(`visibilidad.eq.publica,admin_id.eq.${userId}`)
+    .in('estado', ['borrador', 'activa'])
+    .order('created_at', { ascending: false });
+
+  if (error) return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };
+  return { ok: true as const, data: (data ?? []) as Junta[] };
+}
+
+export async function findJuntaByAccessCode(accessCode: string) {
+  if (!hasSupabase || !supabase) return { ok: true as const, data: null as Junta | null };
+
+  const { data, error } = await supabase.schema('public').rpc('get_junta_by_access_code', { p_access_code: accessCode });
+  if (error) return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };
+
+  const junta = Array.isArray(data) ? (data[0] as Junta | undefined) : (data as Junta | null);
+  return { ok: true as const, data: junta ?? null };
 }

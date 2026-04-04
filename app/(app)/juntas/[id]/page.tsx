@@ -93,6 +93,21 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
           <div className="flex items-center gap-2">
             <Badge>{junta.estado}</Badge>
             <Button variant="outline" onClick={() => { try { navigator.clipboard.writeText(shareUrl); alert('Enlace copiado'); } catch { alert(shareUrl); } }}>Compartir enlace</Button>
+            {junta.visibilidad === 'privada' && junta.access_code && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  try {
+                    navigator.clipboard.writeText(junta.access_code ?? '');
+                    alert('Código copiado');
+                  } catch {
+                    alert(junta.access_code);
+                  }
+                }}
+              >
+                Copiar código
+              </Button>
+            )}
             <Button
               variant="ghost"
               onClick={() => {
@@ -110,16 +125,18 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
 
 
       {junta.visibilidad === 'privada' && (
-        <Card className="space-y-1">
-          <p className="text-sm font-medium">Enlace de invitación privada</p>
-          <p className="text-xs text-slate-500">{shareUrl}</p>
+        <Card className="space-y-2">
+          <p className="text-sm font-medium">Acceso privado</p>
+          <p className="text-xs text-slate-500">Enlace de invitación: {shareUrl}</p>
+          <p className="text-xs text-slate-500">Código de acceso: <span className="font-semibold text-slate-700">{junta.access_code ?? 'Sin código'}</span></p>
         </Card>
       )}
 
       {junta.visibilidad === 'publica' && (
-        <Card className="space-y-1">
+        <Card className="space-y-2">
           <p className="text-sm font-medium">Junta pública</p>
           <p className="text-xs text-slate-500">Esta junta aparece en /explorar para nuevos participantes.</p>
+          <Button variant="outline">Ver como usuario</Button>
         </Card>
       )}
       <Card className="space-y-3">

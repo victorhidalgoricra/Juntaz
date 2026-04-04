@@ -20,6 +20,7 @@ export interface Junta {
   admin_id: string;
   slug: string;
   invite_token: string;
+  access_code?: string;
   nombre: string;
   descripcion?: string;
   moneda: 'PEN' | 'USD';

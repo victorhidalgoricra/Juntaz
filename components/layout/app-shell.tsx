@@ -11,7 +11,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const user = useAuthStore((s) => s.user);
   const links = [
     { href: '/dashboard', label: 'Dashboard' },
-    { href: '/juntas', label: 'Mis juntas' },
+    { href: '/juntas', label: 'Juntas disponibles' },
     { href: '/juntas/new', label: 'Crear junta' },
     { href: '/notifications', label: 'Notificaciones' },
     { href: '/profile', label: 'Perfil' },

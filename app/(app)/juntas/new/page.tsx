@@ -13,6 +13,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { useAppStore } from '@/store/app-store';
 import { generarCronograma } from '@/services/schedule.service';
 import { makeSlug } from '@/lib/slug';
+import { generateAccessCode } from '@/lib/access-code';
 import { createJuntaRecord } from '@/services/juntas.repository';
 
 export default function NewJuntaPage() {
@@ -67,6 +68,7 @@ export default function NewJuntaPage() {
                 admin_id: user.id,
                 slug,
                 invite_token: crypto.randomUUID(),
+                access_code: values.visibilidad === 'privada' ? generateAccessCode('PRIV') : undefined,
                 nombre: values.nombre,
                 descripcion: values.descripcion,
                 moneda: 'PEN' as const,
