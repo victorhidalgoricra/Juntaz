@@ -115,6 +115,13 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
           <p className="text-xs text-slate-500">{shareUrl}</p>
         </Card>
       )}
+
+      {junta.visibilidad === 'publica' && (
+        <Card className="space-y-1">
+          <p className="text-sm font-medium">Junta pública</p>
+          <p className="text-xs text-slate-500">Esta junta aparece en /explorar para nuevos participantes.</p>
+        </Card>
+      )}
       <Card className="space-y-3">
         <h2 className="font-semibold">Configuración financiera</h2>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
