@@ -14,7 +14,7 @@ import { useAppStore } from '@/store/app-store';
 import { generarCronograma } from '@/services/schedule.service';
 import { makeSlug } from '@/lib/slug';
 import { generateAccessCode } from '@/lib/access-code';
-import { createJuntaRecord } from '@/services/juntas.repository';
+import { createJuntaRecord, fetchJuntaById, fetchPublicJuntas } from '@/services/juntas.repository';
 import { calcularSimulacionJunta } from '@/services/incentive.service';
 
 export default function NewJuntaPage() {
@@ -110,6 +110,32 @@ export default function NewJuntaPage() {
 
               const persist = await createJuntaRecord(created);
               if (!persist.ok) throw new Error(persist.message);
+
+              const postCreateById = await fetchJuntaById(juntaId);
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[Crear Junta] post-create fetch by id', {
+                  juntaId,
+                  visibilidad: values.visibilidad,
+                  ok: postCreateById.ok,
+                  data: postCreateById.ok ? postCreateById.data : null,
+                  error: postCreateById.ok ? null : postCreateById.message
+                });
+              }
+
+              if (values.visibilidad === 'publica') {
+                const postCreatePublicCatalog = await fetchPublicJuntas();
+                if (process.env.NODE_ENV === 'development') {
+                  const existsInPublicCatalog =
+                    postCreatePublicCatalog.ok && postCreatePublicCatalog.data.some((item) => item.id === juntaId);
+                  console.log('[Crear Junta] post-create public catalog fetch', {
+                    juntaId,
+                    ok: postCreatePublicCatalog.ok,
+                    existsInPublicCatalog,
+                    size: postCreatePublicCatalog.ok ? postCreatePublicCatalog.data.length : 0,
+                    error: postCreatePublicCatalog.ok ? null : postCreatePublicCatalog.message
+                  });
+                }
+              }
 
               const schedule = generarCronograma({
                 juntaId,

@@ -58,7 +58,12 @@ export async function createJuntaRecord(junta: Junta) {
     console.log('[createJuntaRecord] step=insert_junta payload', juntaInsertPayload);
   }
 
-  const { error } = await supabase.schema('public').from('juntas').insert(juntaInsertPayload);
+  const { data: insertedJunta, error } = await supabase
+    .schema('public')
+    .from('juntas')
+    .insert(juntaInsertPayload)
+    .select('id,admin_id,visibilidad,estado')
+    .maybeSingle();
 
   if (error) {
     if (process.env.NODE_ENV === 'development') {
@@ -68,7 +73,7 @@ export async function createJuntaRecord(junta: Junta) {
   }
 
   if (process.env.NODE_ENV === 'development') {
-    console.log('[createJuntaRecord] step=insert_junta success', { junta_id: junta.id });
+    console.log('[createJuntaRecord] step=insert_junta success', insertedJunta);
   }
 
   const ownerMemberPayload = {
@@ -82,7 +87,12 @@ export async function createJuntaRecord(junta: Junta) {
     console.log('[createJuntaRecord] step=insert_owner_member payload', ownerMemberPayload);
   }
 
-  const { error: memberError } = await supabase.schema('public').from('junta_members').upsert(ownerMemberPayload);
+  const { data: insertedMember, error: memberError } = await supabase
+    .schema('public')
+    .from('junta_members')
+    .upsert(ownerMemberPayload)
+    .select('id,junta_id,profile_id,estado,rol')
+    .maybeSingle();
 
   if (memberError) {
     if (process.env.NODE_ENV === 'development') {
@@ -92,11 +102,7 @@ export async function createJuntaRecord(junta: Junta) {
   }
 
   if (process.env.NODE_ENV === 'development') {
-    console.log('[createJuntaRecord] step=insert_owner_member success', {
-      junta_id: ownerMemberPayload.junta_id,
-      profile_id: ownerMemberPayload.profile_id,
-      estado: ownerMemberPayload.estado
-    });
+    console.log('[createJuntaRecord] step=insert_owner_member success', insertedMember);
   }
 
   return { ok: true as const, source: 'supabase' as const };
