@@ -27,7 +27,7 @@ export async function createJuntaRecord(junta: Junta) {
   });
   if (!profileResult.ok) return { ok: false as const, message: profileResult.message };
 
-  const { error } = await supabase.schema('public').from('juntas').insert({
+  const juntaInsertPayload = {
     id: junta.id,
     admin_id: junta.admin_id,
     slug: junta.slug,
@@ -53,19 +53,51 @@ export async function createJuntaRecord(junta: Junta) {
     visibilidad: junta.visibilidad,
     cerrar_inscripciones: junta.cerrar_inscripciones,
     estado: junta.estado
-  });
+  };
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[createJuntaRecord] step=insert_junta payload', juntaInsertPayload);
+  }
 
-  if (error) return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };
+  const { error } = await supabase.schema('public').from('juntas').insert(juntaInsertPayload);
 
-  const { error: memberError } = await supabase.schema('public').from('junta_members').upsert({
+  if (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[createJuntaRecord] step=insert_junta error', error);
+    }
+    return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[createJuntaRecord] step=insert_junta success', { junta_id: junta.id });
+  }
+
+  const ownerMemberPayload = {
     junta_id: junta.id,
     profile_id: junta.admin_id,
     estado: 'activo',
     rol: 'admin',
     orden_turno: 1
-  });
+  };
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[createJuntaRecord] step=insert_owner_member payload', ownerMemberPayload);
+  }
 
-  if (memberError) return { ok: false as const, message: mapSupabaseErrorMessage(memberError.message) };
+  const { error: memberError } = await supabase.schema('public').from('junta_members').upsert(ownerMemberPayload);
+
+  if (memberError) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[createJuntaRecord] step=insert_owner_member error', memberError);
+    }
+    return { ok: false as const, message: mapSupabaseErrorMessage(memberError.message) };
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[createJuntaRecord] step=insert_owner_member success', {
+      junta_id: ownerMemberPayload.junta_id,
+      profile_id: ownerMemberPayload.profile_id,
+      estado: ownerMemberPayload.estado
+    });
+  }
 
   return { ok: true as const, source: 'supabase' as const };
 }
