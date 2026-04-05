@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,8 +12,10 @@ import { activateJuntaIfReady, deleteDraftJunta, fetchJuntaById, fetchMembersByJ
 import { calcularSimulacionJunta } from '@/services/incentive.service';
 import { Junta } from '@/types/domain';
 import { hasSupabase } from '@/lib/env';
+import { supabase } from '@/lib/supabase';
 
 export default function JuntaDetailPage({ params }: { params: { id: string } }) {
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const { juntas, members, setData } = useAppStore();
   const storeJunta = juntas.find((j) => j.id === params.id) ?? null;
@@ -143,6 +146,12 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
                       }
 
                       if (process.env.NODE_ENV === 'development') {
+                        const sessionResult = hasSupabase && supabase ? await supabase.auth.getSession() : null;
+                        console.log('delete session before', {
+                          userInStore: user?.id ?? null,
+                          supabaseSessionUser: sessionResult?.data.session?.user?.id ?? null,
+                          supabaseSessionError: sessionResult?.error ?? null
+                        });
                         console.log('delete junta id', junta.id);
                         console.log('delete junta admin_id', junta.admin_id);
                         console.log('delete currentProfileId', currentProfileId);
@@ -158,12 +167,30 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
                         return;
                       }
 
-                      setData({
-                        juntas: juntas.filter((j) => j.id !== junta.id),
-                        members: members.filter((m) => m.junta_id !== junta.id)
-                      });
-                      alert('Junta eliminada correctamente.');
-                      window.location.href = '/juntas';
+                      try {
+                        setData({
+                          juntas: juntas.filter((j) => j.id !== junta.id),
+                          members: members.filter((m) => m.junta_id !== junta.id)
+                        });
+                        alert('Junta eliminada correctamente.');
+
+                        if (process.env.NODE_ENV === 'development') {
+                          const sessionResult = hasSupabase && supabase ? await supabase.auth.getSession() : null;
+                          console.log('delete session after', {
+                            userInStore: user?.id ?? null,
+                            supabaseSessionUser: sessionResult?.data.session?.user?.id ?? null,
+                            supabaseSessionError: sessionResult?.error ?? null
+                          });
+                          console.log('delete redirect route', '/juntas');
+                        }
+
+                        router.replace('/juntas');
+                      } catch (postDeleteError) {
+                        if (process.env.NODE_ENV === 'development') {
+                          console.error('[Junta detalle] post-delete error', postDeleteError);
+                        }
+                        alert('La junta se eliminó, pero ocurrió un error al actualizar la vista.');
+                      }
                     }}
                   >
                     Eliminar junta
