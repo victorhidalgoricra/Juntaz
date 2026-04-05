@@ -189,6 +189,18 @@ export async function leaveJuntaAsParticipant(params: { juntaId: string }) {
   return { ok: true as const };
 }
 
+export async function activateJuntaIfReady(params: { juntaId: string }) {
+  if (!hasSupabase || !supabase) return { ok: true as const, data: { estado: 'activa' as const } };
+
+  const { data, error } = await supabase.schema('public').rpc('activate_junta_if_ready', { p_junta_id: params.juntaId });
+  if (error) return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };
+
+  const junta = Array.isArray(data) ? (data[0] as Junta | undefined) : (data as Junta | null);
+  if (!junta) return { ok: false as const, message: 'No se pudo activar la junta.' };
+
+  return { ok: true as const, data: junta };
+}
+
 export async function deleteDraftJunta(params: { juntaId: string; userId: string }) {
   if (!hasSupabase || !supabase) return { ok: true as const };
 
