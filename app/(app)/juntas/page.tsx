@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { useAppStore } from '@/store/app-store';
 import {
   activateJuntaIfReady,
+  deleteDraftJunta,
   fetchAvailableJuntas,
   findJuntaByAccessCode,
   joinJuntaAsParticipant,
@@ -40,6 +41,7 @@ export default function JuntasDisponiblesPage() {
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [leavingId, setLeavingId] = useState<string | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterId>('todas');
 
   useEffect(() => {
@@ -200,6 +202,29 @@ export default function JuntasDisponiblesPage() {
     setActivatingId(null);
   };
 
+  const handleDelete = async (juntaId: string) => {
+    const confirmDelete = window.confirm('¿Seguro que deseas eliminar esta junta? Esta acción no se puede deshacer.');
+    if (!confirmDelete) return;
+
+    setJoinErrorByJunta((prev) => ({ ...prev, [juntaId]: '' }));
+    setDeletingId(juntaId);
+
+    const result = await deleteDraftJunta({ juntaId, userId: user.id });
+    if (!result.ok) {
+      setJoinErrorByJunta((prev) => ({ ...prev, [juntaId]: result.message }));
+      setDeletingId(null);
+      return;
+    }
+
+    setData({
+      juntas: allJuntas.filter((item) => item.id !== juntaId),
+      members: allMembers.filter((member) => member.junta_id !== juntaId)
+    });
+    setDeletingId(null);
+    alert('Junta eliminada correctamente.');
+    window.location.href = '/juntas';
+  };
+
   return (
     <div className="space-y-6">
       <Card className="space-y-4 border-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 p-6 text-white shadow-xl">
@@ -265,10 +290,11 @@ export default function JuntasDisponiblesPage() {
             const miembrosActuales = countByJunta.get(j.id) ?? 0;
             const cupoCompleto = miembrosActuales >= j.participantes_max;
             const estadoVisual = j.estado === 'activa' ? 'activa' : cupoCompleto ? 'completa' : 'borrador';
-            const canJoin = !isOwner && !isMember && !cupoCompleto;
-            const showActivate = isOwner && isMember;
-            const showLeave = isMember && !isOwner;
-            const showJoin = !isMember;
+            const roleState = isOwner ? 'owner' : isMember ? 'member' : 'visitor';
+            const canActivate = roleState === 'owner' && cupoCompleto && j.estado !== 'activa';
+            const canDelete = roleState === 'owner' && j.estado !== 'activa';
+            const canLeave = roleState === 'member' && j.estado !== 'activa';
+            const canJoin = roleState === 'visitor' && !cupoCompleto;
 
             return (
               <Card key={j.id} className="flex h-full flex-col justify-between gap-4 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
@@ -290,34 +316,52 @@ export default function JuntasDisponiblesPage() {
 
                   {cupoCompleto && <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-700">Cupo completo</div>}
                   {j.visibilidad === 'privada' && <div className="rounded-md bg-slate-100 p-2 text-xs text-slate-700">Requiere enlace o código de acceso.</div>}
-                  {showActivate && <div className="rounded-md bg-indigo-50 p-2 text-xs text-indigo-700">Eres el creador de esta junta.</div>}
-                  {showLeave && <div className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">Participando</div>}
+                  {roleState === 'owner' && <div className="rounded-md bg-indigo-50 p-2 text-xs text-indigo-700">Eres el creador de esta junta.</div>}
+                  {roleState === 'member' && <div className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">Participando</div>}
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
                     <Link href={`/juntas/${j.id}`}><Button variant="outline">Ver detalle</Button></Link>
-                    {showActivate && (
+                    {roleState === 'owner' && (
                       <Button
-                        disabled={!cupoCompleto || j.estado === 'activa' || activatingId === j.id}
+                        disabled={!canActivate || activatingId === j.id}
                         onClick={() => handleActivate(j.id)}
                       >
                         {j.estado === 'activa' ? 'Junta activa' : activatingId === j.id ? 'Activando...' : 'Activar junta'}
                       </Button>
                     )}
-                    {showLeave && (
+                    {roleState === 'owner' && canDelete && (
                       <Button
-                        variant="ghost"
-                        disabled={j.estado === 'activa' || leavingId === j.id}
-                        onClick={() => handleLeave(j.id)}
+                        variant="destructive"
+                        disabled={deletingId === j.id}
+                        onClick={() => handleDelete(j.id)}
                       >
-                        {j.estado === 'activa' ? 'Ya te uniste' : leavingId === j.id ? 'Retirándome...' : 'Retirarme'}
+                        {deletingId === j.id ? 'Eliminando...' : 'Eliminar junta'}
                       </Button>
                     )}
-                    {showJoin && (
+                    {roleState === 'member' && (
+                      <Button
+                        variant="ghost"
+                        disabled={!canLeave || leavingId === j.id}
+                        onClick={() => handleLeave(j.id)}
+                      >
+                        {leavingId === j.id ? 'Retirándome...' : 'Retirarme'}
+                      </Button>
+                    )}
+                    {roleState === 'visitor' && (
                       <Button disabled={!canJoin || joiningId === j.id} onClick={() => handleJoin(j.id, j.access_code)}>{joiningId === j.id ? 'Uniéndome...' : 'Unirme'}</Button>
                     )}
                   </div>
+                  {roleState === 'owner' && !cupoCompleto && (
+                    <p className="text-xs text-amber-700">Completa todos los integrantes para activar la junta</p>
+                  )}
+                  {roleState === 'member' && j.estado === 'activa' && (
+                    <p className="text-xs text-amber-700">No puedes retirarte de una junta activa</p>
+                  )}
+                  {roleState === 'visitor' && cupoCompleto && (
+                    <p className="text-xs text-slate-600">Cupo completo</p>
+                  )}
                   {joinErrorByJunta[j.id] && <p className="text-xs text-red-600">{joinErrorByJunta[j.id]}</p>}
                 </div>
               </Card>

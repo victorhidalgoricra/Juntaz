@@ -7,8 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/store/app-store';
 import { useAuthStore } from '@/store/auth-store';
-import { validarActivacionJunta } from '@/services/junta.service';
-import { deleteDraftJunta, fetchJuntaById, fetchMembersByJuntaIds } from '@/services/juntas.repository';
+import { activateJuntaIfReady, deleteDraftJunta, fetchJuntaById, fetchMembersByJuntaIds } from '@/services/juntas.repository';
 import { calcularSimulacionJunta } from '@/services/incentive.service';
 import { Junta } from '@/types/domain';
 import { hasSupabase } from '@/lib/env';
@@ -109,13 +108,16 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
                   variant="ghost"
                   disabled={!activable}
                   title={activable ? 'Lista para activar' : 'Completa todos los integrantes para activar la junta'}
-                  onClick={() => {
-                    try {
-                      validarActivacionJunta(miembrosActuales, junta.participantes_max);
-                      setData({ juntas: juntas.map((j) => (j.id === junta.id ? { ...j, estado: 'activa' } : j)) });
-                    } catch (error) {
-                      alert((error as Error).message);
+                  onClick={async () => {
+                    const result = await activateJuntaIfReady({ juntaId: junta.id });
+                    if (!result.ok) {
+                      alert(result.message);
+                      return;
                     }
+
+                    const nextJunta = { ...junta, ...result.data };
+                    setJunta(nextJunta);
+                    setData({ juntas: juntas.map((j) => (j.id === junta.id ? nextJunta : j)) });
                   }}
                 >
                   Activar junta
