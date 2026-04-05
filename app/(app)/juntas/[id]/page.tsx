@@ -136,13 +136,20 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
 
                       const confirmDelete = window.confirm('¿Seguro que deseas eliminar esta junta? Esta acción no se puede deshacer.');
                       if (!confirmDelete || !user) return;
+                      const currentProfileId = user.id;
+                      if (!currentProfileId) {
+                        alert('No pudimos validar tu perfil. Vuelve a iniciar sesión.');
+                        return;
+                      }
 
                       if (process.env.NODE_ENV === 'development') {
                         console.log('delete junta id', junta.id);
-                        console.log('delete payload', { p_junta_id: junta.id });
+                        console.log('delete junta admin_id', junta.admin_id);
+                        console.log('delete currentProfileId', currentProfileId);
+                        console.log('delete payload', { p_junta_id: junta.id, p_user_id: currentProfileId });
                       }
 
-                      const result = await deleteDraftJunta({ juntaId: junta.id, userId: user.id });
+                      const result = await deleteDraftJunta({ juntaId: junta.id, currentProfileId });
                       if (!result.ok) {
                         if (process.env.NODE_ENV === 'development') {
                           console.error('[Junta detalle] delete failed', { juntaId: junta.id, message: result.message });

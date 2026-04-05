@@ -202,7 +202,13 @@ export default function JuntasDisponiblesPage() {
     setActivatingId(null);
   };
 
-  const handleDelete = async (juntaId: string) => {
+  const handleDelete = async (juntaId: string, juntaAdminId: string) => {
+    const currentProfileId = user?.id;
+    if (!currentProfileId) {
+      setJoinErrorByJunta((prev) => ({ ...prev, [juntaId]: 'No pudimos validar tu perfil. Vuelve a iniciar sesión.' }));
+      return;
+    }
+
     if (!juntaId) {
       if (process.env.NODE_ENV === 'development') {
         console.error('[Juntas disponibles] delete blocked: invalid junta id', { juntaId });
@@ -219,10 +225,12 @@ export default function JuntasDisponiblesPage() {
 
     if (process.env.NODE_ENV === 'development') {
       console.log('delete junta id', juntaId);
-      console.log('delete payload', { p_junta_id: juntaId });
+      console.log('delete junta admin_id', juntaAdminId);
+      console.log('delete currentProfileId', currentProfileId);
+      console.log('delete payload', { p_junta_id: juntaId, p_user_id: currentProfileId });
     }
 
-    const result = await deleteDraftJunta({ juntaId, userId: user.id });
+    const result = await deleteDraftJunta({ juntaId, currentProfileId });
     if (!result.ok) {
       if (process.env.NODE_ENV === 'development') {
         console.error('[Juntas disponibles] delete failed', { juntaId, message: result.message });
@@ -352,7 +360,7 @@ export default function JuntasDisponiblesPage() {
                       <Button
                         variant="destructive"
                         disabled={deletingId === juntaId}
-                        onClick={() => handleDelete(juntaId)}
+                        onClick={() => handleDelete(juntaId, j.admin_id)}
                       >
                         {deletingId === juntaId ? 'Eliminando...' : 'Eliminar junta'}
                       </Button>

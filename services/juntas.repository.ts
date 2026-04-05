@@ -204,16 +204,20 @@ export async function activateJuntaIfReady(params: { juntaId: string }) {
   return { ok: true as const, data: junta };
 }
 
-export async function deleteDraftJunta(params: { juntaId: string; userId: string }) {
+export async function deleteDraftJunta(params: { juntaId: string; currentProfileId: string }) {
   if (!hasSupabase || !supabase) return { ok: true as const };
 
-  const juntaResult = await fetchJuntaById(params.juntaId);
-  if (!juntaResult.ok || !juntaResult.data) return { ok: false as const, message: 'No se encontró la junta.' };
+  const payload = {
+    p_junta_id: params.juntaId,
+    p_user_id: params.currentProfileId
+  };
+  const { data, error } = await supabase.schema('public').rpc('delete_junta_with_dependencies', payload);
 
-  if (juntaResult.data.admin_id !== params.userId) return { ok: false as const, message: 'Solo el creador puede eliminar esta junta.' };
-  if (juntaResult.data.estado === 'activa') return { ok: false as const, message: 'No puedes eliminar una junta activa.' };
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[deleteDraftJunta] rpc payload', payload);
+    console.log('[deleteDraftJunta] rpc response', { data, error });
+  }
 
-  const { error } = await supabase.schema('public').rpc('delete_junta_with_dependencies', { p_junta_id: params.juntaId });
   if (error) {
     if (process.env.NODE_ENV === 'development') {
       console.error('[deleteDraftJunta] supabase error', error);
