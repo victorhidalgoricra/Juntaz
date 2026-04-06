@@ -42,6 +42,7 @@ export default function JuntasDisponiblesPage() {
   const [accessCode, setAccessCode] = useState('');
   const [codeError, setCodeError] = useState<string | null>(null);
   const [joinErrorByJunta, setJoinErrorByJunta] = useState<Record<string, string>>({});
+  const [activationFeedbackByJunta, setActivationFeedbackByJunta] = useState<Record<string, string>>({});
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [leavingId, setLeavingId] = useState<string | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
@@ -199,7 +200,23 @@ export default function JuntasDisponiblesPage() {
   };
 
   const handleActivate = async (juntaId: string) => {
+    const junta = allJuntas.find((item) => item.id === juntaId);
+    if (!junta) return;
+
+    const miembrosActuales = countByJunta.get(juntaId) ?? Number(junta.integrantes_actuales ?? 0);
+    const cupoCompleto = miembrosActuales >= junta.participantes_max;
+
+    setActivationFeedbackByJunta((prev) => ({ ...prev, [juntaId]: '' }));
     setJoinErrorByJunta((prev) => ({ ...prev, [juntaId]: '' }));
+
+    if (!cupoCompleto) {
+      setActivationFeedbackByJunta((prev) => ({
+        ...prev,
+        [juntaId]: 'Completa todos los integrantes para activar la junta'
+      }));
+      return;
+    }
+
     setActivatingId(juntaId);
 
     const result = await activateJuntaIfReady({ juntaId });
@@ -212,6 +229,7 @@ export default function JuntasDisponiblesPage() {
     setData({
       juntas: allJuntas.map((item) => (item.id === juntaId ? { ...item, ...result.data } : item))
     });
+    setActivationFeedbackByJunta((prev) => ({ ...prev, [juntaId]: '' }));
     setActivatingId(null);
   };
 
@@ -354,9 +372,10 @@ export default function JuntasDisponiblesPage() {
             const cupoCompleto = miembrosActuales >= j.participantes_max;
             const estadoVisual = j.estado === 'activa' ? 'activa' : cupoCompleto ? 'completa' : 'borrador';
             const roleState = isOwner ? 'owner' : isMember ? 'member' : 'visitor';
-            const canActivate = roleState === 'owner' && cupoCompleto && j.estado !== 'activa';
+            const isActive = j.estado === 'activa';
+            const canActivate = roleState === 'owner' && !isActive;
             const canDelete = roleState === 'owner';
-            const canLeave = roleState === 'member' && j.estado !== 'activa';
+            const canLeave = roleState === 'member' && !isActive;
             const canJoinPublic = roleState === 'visitor' && !cupoCompleto && j.visibilidad === 'publica';
             const canAccessPrivate = roleState === 'visitor' && !cupoCompleto && j.visibilidad === 'privada';
             const actionBranch = roleState === 'owner' ? 'owner-actions' : roleState === 'member' ? 'member-actions' : 'visitor-actions';
@@ -399,21 +418,21 @@ export default function JuntasDisponiblesPage() {
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
                     <Link href={`/juntas/${juntaId}`}><Button variant="outline">Ver detalle</Button></Link>
-                    {roleState === 'owner' && (
+                    {roleState === 'owner' && !isActive && (
                       <Button
                         disabled={!canActivate || activatingId === juntaId}
                         onClick={() => handleActivate(juntaId)}
                       >
-                        {j.estado === 'activa' ? 'Junta activa' : activatingId === juntaId ? 'Activando...' : 'Activar junta'}
+                        {activatingId === juntaId ? 'Activando...' : 'Activar junta'}
                       </Button>
                     )}
-                    {roleState === 'owner' && canDelete && (
+                    {roleState === 'owner' && !isActive && canDelete && (
                       <Button
                         variant="destructive"
-                        disabled={j.estado === 'activa' || deletingId === juntaId}
+                        disabled={deletingId === juntaId}
                         onClick={() => handleDelete(juntaId, j.admin_id)}
                       >
-                        {j.estado === 'activa' ? 'No eliminable activa' : deletingId === juntaId ? 'Eliminando...' : 'Eliminar junta'}
+                        {deletingId === juntaId ? 'Eliminando...' : 'Eliminar junta'}
                       </Button>
                     )}
                     {roleState === 'member' && (
@@ -431,8 +450,8 @@ export default function JuntasDisponiblesPage() {
                         : <Button disabled={!canJoinPublic || joiningId === juntaId} onClick={() => handleJoin(juntaId)}>{joiningId === juntaId ? 'Uniéndome...' : 'Unirme'}</Button>
                     )}
                   </div>
-                  {roleState === 'owner' && !cupoCompleto && (
-                    <p className="text-xs text-amber-700">Completa todos los integrantes para activar la junta</p>
+                  {roleState === 'owner' && activationFeedbackByJunta[juntaId] && (
+                    <p className="text-xs text-amber-700">{activationFeedbackByJunta[juntaId]}</p>
                   )}
                   {roleState === 'member' && j.estado === 'activa' && (
                     <p className="text-xs text-amber-700">No puedes retirarte de una junta activa</p>
