@@ -355,7 +355,7 @@ export default function JuntasDisponiblesPage() {
             const estadoVisual = j.estado === 'activa' ? 'activa' : cupoCompleto ? 'completa' : 'borrador';
             const roleState = isOwner ? 'owner' : isMember ? 'member' : 'visitor';
             const canActivate = roleState === 'owner' && cupoCompleto && j.estado !== 'activa';
-            const canDelete = roleState === 'owner' && j.estado !== 'activa';
+            const canDelete = roleState === 'owner';
             const canLeave = roleState === 'member' && j.estado !== 'activa';
             const canJoinPublic = roleState === 'visitor' && !cupoCompleto && j.visibilidad === 'publica';
             const canAccessPrivate = roleState === 'visitor' && !cupoCompleto && j.visibilidad === 'privada';
@@ -398,10 +398,10 @@ export default function JuntasDisponiblesPage() {
                     {roleState === 'owner' && canDelete && (
                       <Button
                         variant="destructive"
-                        disabled={deletingId === juntaId}
+                        disabled={j.estado === 'activa' || deletingId === juntaId}
                         onClick={() => handleDelete(juntaId, j.admin_id)}
                       >
-                        {deletingId === juntaId ? 'Eliminando...' : 'Eliminar junta'}
+                        {j.estado === 'activa' ? 'No eliminable activa' : deletingId === juntaId ? 'Eliminando...' : 'Eliminar junta'}
                       </Button>
                     )}
                     {roleState === 'member' && (
@@ -431,7 +431,9 @@ export default function JuntasDisponiblesPage() {
                   {roleState === 'visitor' && cupoCompleto && (
                     <p className="text-xs text-slate-600">Cupo completo</p>
                   )}
-                  {joinErrorByJunta[juntaId] && <p className="text-xs text-red-600">{joinErrorByJunta[juntaId]}</p>}
+                  {joinErrorByJunta[juntaId] && !(roleState === 'owner' && joinErrorByJunta[juntaId].includes('creador no puede retirarse')) && (
+                    <p className="text-xs text-red-600">{joinErrorByJunta[juntaId]}</p>
+                  )}
                 </div>
               </Card>
             );
