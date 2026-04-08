@@ -9,13 +9,12 @@ import { useAuthStore } from '@/store/auth-store';
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
+  const isAccountSection = pathname.startsWith('/account') || pathname.startsWith('/profile') || pathname.startsWith('/settings') || pathname.startsWith('/notifications');
   const links = [
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/juntas', label: 'Juntas disponibles' },
     { href: '/juntas/new', label: 'Crear junta' },
-    { href: '/notifications', label: 'Notificaciones' },
-    { href: '/profile', label: 'Perfil' },
-    { href: '/settings', label: 'Configuración' },
+    { href: '/account', label: 'Mi cuenta' },
     ...(user?.global_role === 'admin' ? [{ href: '/admin', label: 'Backoffice' }] : [])
   ];
 
@@ -30,7 +29,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               href={link.href}
               className={cn(
                 'rounded-md px-3 py-2 text-sm',
-                pathname === link.href ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'
+                (pathname === link.href || (link.href === '/account' && isAccountSection))
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-700'
               )}
             >
               {link.label}
