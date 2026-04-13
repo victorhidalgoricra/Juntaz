@@ -1,7 +1,6 @@
 'use client';
 
-import Link from 'next/link';
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,128 +11,30 @@ import { activateJuntaIfReady, deleteDraftJunta, fetchJuntaById, fetchMembersByJ
 import { calcularSimulacionJunta } from '@/services/incentive.service';
 import { Junta } from '@/types/domain';
 import { hasSupabase } from '@/lib/env';
-import { supabase } from '@/lib/supabase';
 import { formatIncentiveLabel, getAvatarColor, getInitial } from '@/lib/profile-display';
 
-type DetailTab = 'integrantes' | 'cronograma' | 'pagos';
+type DetailView = 'admin' | 'participante' | 'sugerencias';
+type WeeklyPaymentStatus = 'Pagado' | 'Pendiente' | 'Validando' | 'Vencido' | 'Exonerado';
 
-function CronogramaView({
-  rows,
-  currentWeek,
-  myTurn
-}: {
-  rows: ReturnType<typeof calcularSimulacionJunta>['rows'];
-  currentWeek: number;
-  myTurn: number | null;
-}) {
-  return (
-    <Card>
-      <h2 className="mb-3 font-semibold">Cronograma</h2>
-      <div className="space-y-2">
-        {rows.map((row) => {
-          const status = row.turno === myTurn ? 'Tu turno' : row.turno < currentWeek ? 'Pagado' : row.turno === currentWeek ? 'Pendiente' : 'Por venir';
-          return (
-            <div key={`tab-schedule-${row.turno}`} className="flex items-center justify-between rounded-md border p-2 text-sm">
-              <p>Semana {row.turno} · {row.fechaRonda}</p>
-              <div className="flex items-center gap-2">
-                <Badge>{status}</Badge>
-                <span>S/ {row.cuotaPorRonda.toFixed(2)}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
-function IntegrantesView({
-  members,
-  juntaAdminId,
-  currentUserId,
-  currentWeek
-}: {
-  members: Array<{ id: string; profile_id: string; orden_turno: number; rol?: 'admin' | 'participante' }>;
-  juntaAdminId: string;
-  currentUserId?: string;
-  currentWeek: number;
-}) {
-  return (
-    <Card>
-      <h2 className="mb-2 font-semibold">Integrantes</h2>
-      <div className="space-y-2">
-        {members.map((member, index) => {
-          const isSelf = member.profile_id === currentUserId;
-          const displayName = member.profile_id === juntaAdminId ? 'Creador' : isSelf ? 'Tú' : `Integrante ${index + 1}`;
-          const paymentStatus = member.orden_turno < currentWeek ? 'Pagado' : member.orden_turno === currentWeek ? 'Pendiente' : 'Por venir';
-          return (
-            <div key={`tab-member-${member.id}`} className="flex items-center justify-between rounded-md border p-2 text-sm">
-              <div className="flex items-center gap-2">
-                <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${getAvatarColor(displayName)}`}>{getInitial(displayName)}</div>
-                <div>
-                  <p className="font-medium">{displayName}</p>
-                  <p className="text-xs text-slate-500">Turno {member.orden_turno} · {member.rol ?? 'participante'}</p>
-                </div>
-              </div>
-              <Badge>{paymentStatus}</Badge>
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
-function PagosView({
-  rows,
-  currentWeek,
-  myTurn
-}: {
-  rows: ReturnType<typeof calcularSimulacionJunta>['rows'];
-  currentWeek: number;
-  myTurn: number | null;
-}) {
-  return (
-    <Card>
-      <h2 className="mb-2 font-semibold">Pagos</h2>
-      <div className="space-y-2">
-        {rows.map((row) => {
-          const status = row.turno < currentWeek ? 'pagado' : row.turno === currentWeek ? 'pendiente' : 'pendiente';
-          const isMine = row.turno === myTurn;
-          return (
-            <div key={`tab-payment-${row.turno}`} className="flex items-center justify-between rounded-md border p-2 text-sm">
-              <div>
-                <p className="font-medium">Turno #{row.turno}{isMine ? ' · Tu turno' : ''}</p>
-                <p className="text-xs text-slate-500">{row.fechaRonda}</p>
-              </div>
-              <div className="text-right">
-                <p>S/ {row.cuotaPorRonda.toFixed(2)}</p>
-                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${status === 'pagado' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                  {status}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
+function mapPaymentStatus(raw?: string): WeeklyPaymentStatus {
+  if (!raw) return 'Pendiente';
+  if (raw === 'aprobado') return 'Pagado';
+  if (raw === 'pendiente_aprobacion') return 'Validando';
+  if (raw === 'rechazado') return 'Pendiente';
+  return 'Pendiente';
 }
 
 export default function JuntaDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const user = useAuthStore((s) => s.user);
-  const { juntas, members, setData } = useAppStore();
+  const { juntas, members, payments, schedules, setData } = useAppStore();
+
   const storeJunta = juntas.find((j) => j.id === params.id) ?? null;
   const [junta, setJunta] = useState<Junta | null>(storeJunta);
   const [loadingJunta, setLoadingJunta] = useState(!storeJunta);
-  const [activeView, setActiveView] = useState<'general' | 'participante'>('general');
-  const [activeTab, setActiveTab] = useState<DetailTab>(() => {
-    const tabParam = searchParams.get('tab');
-    if (tabParam === 'integrantes' || tabParam === 'cronograma' || tabParam === 'pagos') return tabParam;
-    return 'cronograma';
-  });
+  const requestedView = searchParams.get('view');
+  const [activeView, setActiveView] = useState<DetailView>('participante');
 
   useEffect(() => {
     const load = async () => {
@@ -170,6 +71,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
       ...miembros
     ];
   }, [junta, miembros]);
+
   const miembrosActivos = miembrosNormalizados.filter((member) => member.estado === 'activo');
   const miembrosActuales = miembrosActivos.length;
 
@@ -186,307 +88,248 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
     });
   }, [junta]);
 
-  const shareUrl = junta
-    ? typeof window !== 'undefined'
-      ? `${window.location.origin}/junta/${junta.slug}`
-      : `/junta/${junta.slug}`
-    : '';
+  const isCreator = user?.id === junta?.admin_id;
+  const isCurrentUserMember = miembrosActivos.some((member) => member.profile_id === user?.id);
+  const isBackofficeAdmin = user?.global_role === 'admin';
+  const canViewAdmin = isCreator;
+  const canViewParticipant = isCurrentUserMember || isCreator;
+  const defaultView: DetailView = canViewAdmin ? 'admin' : 'participante';
+
+  useEffect(() => {
+    if (requestedView === 'admin' || requestedView === 'participante' || requestedView === 'sugerencias') {
+      setActiveView(requestedView);
+      return;
+    }
+    setActiveView(defaultView);
+  }, [requestedView, defaultView]);
 
   if (loadingJunta) return <Card>Cargando junta...</Card>;
   if (!junta || !simulacion) return <Card><p className="text-sm text-slate-600">Junta no encontrada.</p></Card>;
 
-  const faltantes = Math.max(junta.participantes_max - miembrosActuales, 0);
-  const progreso = Math.min((miembrosActuales / junta.participantes_max) * 100, 100);
-  const activable = miembrosActuales >= junta.participantes_max;
-  const isCreator = user?.id === junta.admin_id;
-  const isCurrentUserMember = miembrosActivos.some((member) => member.profile_id === user?.id);
-  const isPrivateUnauthorized = junta.visibilidad === 'privada' && !isCreator && !isCurrentUserMember;
-  const incentiveLabel = formatIncentiveLabel({
-    tipoJunta: junta.tipo_junta,
-    incentivoPorcentaje: junta.incentivo_porcentaje,
-    incentivoRegla: junta.incentivo_regla
-  });
   const currentWeek = Math.max(1, Math.min(simulacion.rows.length, miembrosActuales));
   const myMember = miembrosActivos.find((member) => member.profile_id === user?.id) ?? null;
   const myTurn = myMember?.orden_turno ?? null;
   const myTurnRow = myTurn ? simulacion.rows.find((row) => row.turno === myTurn) ?? null : null;
-  const pendingBanner = Boolean(myMember) && (myTurn ?? 0) >= currentWeek;
 
-  if (isPrivateUnauthorized) {
-    return (
-      <Card className="space-y-3">
-        <h1 className="text-2xl font-semibold">{junta.nombre}</h1>
-        <p className="text-sm text-slate-600">Esta junta privada requiere enlace o código válido para acceder.</p>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.replace('/juntas')}>Volver a juntas</Button>
-          <Button onClick={() => router.replace('/juntas')}>Acceder con código</Button>
-        </div>
-      </Card>
-    );
-  }
+  const currentRoundSchedule = schedules
+    .filter((s) => s.junta_id === junta.id && s.cuota_numero === currentWeek)
+    .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))[0];
+
+  const weeklyMemberRows = miembrosActivos.map((member, index) => {
+    const displayName = member.profile_id === junta.admin_id ? 'Creador' : member.profile_id === user?.id ? 'Tú' : `Integrante ${index + 1}`;
+    const memberPayment = payments.find((p) => p.junta_id === junta.id && p.profile_id === member.profile_id && p.schedule_id === currentRoundSchedule?.id);
+    const paymentStatus: WeeklyPaymentStatus = currentRoundSchedule?.estado === 'vencida' && !memberPayment ? 'Vencido' : mapPaymentStatus(memberPayment?.estado);
+    const trustScore = Math.max(60, 92 - Math.abs(member.orden_turno - currentWeek) * 2);
+
+    return {
+      id: member.id,
+      displayName,
+      turno: member.orden_turno,
+      memberType: member.rol === 'admin' ? 'propietario' : 'participante',
+      trustScore,
+      paymentStatus
+    };
+  });
+
+  const paidCount = weeklyMemberRows.filter((member) => member.paymentStatus === 'Pagado').length;
+  const pendingCount = weeklyMemberRows.filter((member) => member.paymentStatus !== 'Pagado').length;
+
+  const participantPayment = currentRoundSchedule
+    ? payments.find((payment) => payment.junta_id === junta.id && payment.profile_id === user?.id && payment.schedule_id === currentRoundSchedule.id)
+    : null;
+  const participantStatus = currentRoundSchedule?.estado === 'vencida' && !participantPayment ? 'Vencido' : mapPaymentStatus(participantPayment?.estado);
+
+  const urgencyBanner = (() => {
+    const dueText = currentRoundSchedule?.fecha_vencimiento ? new Date(currentRoundSchedule.fecha_vencimiento).toLocaleDateString('es-PE') : 'hoy 12:00pm';
+    const cuota = junta.cuota_base ?? junta.monto_cuota;
+    if (participantStatus === 'Validando') return 'Tu pago está en validación.';
+    if (participantStatus === 'Pagado') return 'Ya pagaste esta semana.';
+    if (myTurn === currentWeek) return 'Tu turno es esta semana.';
+    if (pendingCount > 0 && participantStatus === 'Pendiente') return `Tienes hasta ${dueText} para pagar S/${cuota.toFixed(2)}. Quedan 3 horas.`;
+    return `Hay ${pendingCount} integrante(s) pendiente(s).`;
+  })();
+
+  const incentivoLabel = formatIncentiveLabel({
+    tipoJunta: junta.tipo_junta,
+    incentivoPorcentaje: junta.incentivo_porcentaje,
+    incentivoRegla: junta.incentivo_regla
+  });
+
+  const bolsaSemanal = (junta.cuota_base ?? junta.monto_cuota) * miembrosActuales;
+  const faltantes = Math.max(junta.participantes_max - miembrosActuales, 0);
+  const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/junta/${junta.slug}` : `/junta/${junta.slug}`;
+
+  const statusColor = (status: WeeklyPaymentStatus) => {
+    if (status === 'Pagado') return 'bg-emerald-100 text-emerald-700';
+    if (status === 'Validando') return 'bg-blue-100 text-blue-700';
+    if (status === 'Vencido') return 'bg-rose-100 text-rose-700';
+    return 'bg-amber-100 text-amber-700';
+  };
+
+  const handleSwitchView = (view: DetailView) => {
+    if (view === 'admin' && !canViewAdmin) return;
+    if (view === 'participante' && !canViewParticipant) return;
+    setActiveView(view);
+    router.replace(`/juntas/${junta.id}?view=${view}`);
+  };
 
   return (
     <div className="space-y-4">
-      <Card className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">{junta.nombre}</h1>
-          <p className="text-xs text-slate-600">Semana {currentWeek}/{junta.participantes_max}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant={activeView === 'general' ? 'default' : 'outline'} onClick={() => setActiveView('general')}>Vista general</Button>
-          {isCurrentUserMember && (
-            <Button variant={activeView === 'participante' ? 'default' : 'outline'} onClick={() => setActiveView('participante')}>Vista participante</Button>
-          )}
-        </div>
-      </Card>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => handleSwitchView('admin')} disabled={!canViewAdmin} className={`rounded-xl border px-4 py-2 text-sm ${activeView === 'admin' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-700'} ${!canViewAdmin ? 'cursor-not-allowed opacity-40' : ''}`}>Vista admin</button>
+        <button type="button" onClick={() => handleSwitchView('participante')} disabled={!canViewParticipant} className={`rounded-xl border px-4 py-2 text-sm ${activeView === 'participante' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-700'} ${!canViewParticipant ? 'cursor-not-allowed opacity-40' : ''}`}>Vista participante</button>
+        <button type="button" onClick={() => handleSwitchView('sugerencias')} className={`rounded-xl border px-4 py-2 text-sm ${activeView === 'sugerencias' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-700'}`}>Cambios sugeridos</button>
+      </div>
 
-      {activeView === 'participante' && isCurrentUserMember && pendingBanner && (
-        <Card className="border-amber-200 bg-amber-50">
-          <p className="text-sm font-medium text-amber-800">Tienes una acción pendiente.</p>
-          <p className="text-xs text-amber-700">Tienes hasta hoy 12:00pm para pagar S/ {(junta.cuota_base ?? junta.monto_cuota).toFixed(2)}.</p>
-        </Card>
-      )}
-
-      {activeView === 'general' && (
+      {activeView === 'admin' && canViewAdmin && (
         <>
-          <Card className="space-y-3">
+          <Card className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="space-y-1">
-                <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-                  <Badge>{junta.estado}</Badge>
-                  <Badge>{junta.tipo_junta === 'incentivo' ? 'Con incentivos' : 'Normal'}</Badge>
-                  <Badge>{junta.visibilidad}</Badge>
-                  <span className="rounded-full bg-slate-100 px-2 py-1 font-medium">Integrantes {miembrosActuales}/{junta.participantes_max}</span>
-                </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl font-semibold">{junta.nombre}</h1>
+                <Badge>{junta.estado === 'activa' ? 'Activa' : junta.estado === 'borrador' ? 'En formación' : junta.estado}</Badge>
+                <Badge>Semana {currentWeek}/{junta.participantes_max}</Badge>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={() => { try { navigator.clipboard.writeText(shareUrl); alert('Enlace copiado'); } catch { alert(shareUrl); } }}>Copiar enlace</Button>
-                {junta.visibilidad === 'privada' && junta.access_code && (
-                  <Button variant="outline" onClick={() => { try { navigator.clipboard.writeText(junta.access_code ?? ''); alert('Código copiado'); } catch { alert(junta.access_code); } }}>Copiar código</Button>
-                )}
-                {isCreator && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      disabled={!activable}
-                      title={activable ? 'Lista para activar' : 'Completa todos los integrantes para activar la junta'}
-                      onClick={async () => {
-                        const result = await activateJuntaIfReady({ juntaId: junta.id });
-                        if (!result.ok) {
-                          alert(result.message);
-                          return;
-                        }
-
-                        const nextJunta = { ...junta, ...result.data };
-                        setJunta(nextJunta);
-                        setData({ juntas: juntas.map((j) => (j.id === junta.id ? nextJunta : j)) });
-                      }}
-                    >
-                      Activar junta
-                    </Button>
-                    {junta.estado !== 'activa' && (
-                      <Button
-                        variant="destructive"
-                        onClick={async () => {
-                          if (!junta.id) {
-                            alert('No pudimos eliminar la junta. Intenta nuevamente.');
-                            return;
-                          }
-
-                          const confirmDelete = window.confirm('¿Seguro que deseas eliminar esta junta? Esta acción no se puede deshacer.');
-                          if (!confirmDelete || !user) return;
-                          const currentProfileId = user.id;
-                          if (!currentProfileId) {
-                            alert('No pudimos validar tu perfil. Vuelve a iniciar sesión.');
-                            return;
-                          }
-
-                          const result = await deleteDraftJunta({ juntaId: junta.id, currentProfileId });
-                          if (!result.ok) {
-                            alert(result.message);
-                            return;
-                          }
-
-                          setData({
-                            juntas: juntas.filter((j) => j.id !== junta.id),
-                            members: members.filter((m) => m.junta_id !== junta.id)
-                          });
-                          alert('Junta eliminada correctamente.');
-                          router.replace('/juntas');
-                        }}
-                      >
-                        Eliminar junta
-                      </Button>
-                    )}
-                  </>
-                )}
-              </div>
+              <Button variant="outline" onClick={() => { try { navigator.clipboard.writeText(shareUrl); } catch { /* ignore */ } }}>Copiar enlace</Button>
             </div>
-            {!activable && <p className="text-xs text-amber-700">Completa todos los integrantes para activar la junta.</p>}
+
+            <div className="grid gap-3 md:grid-cols-4">
+              <Card><p className="text-xs text-slate-500">Bolsa semanal</p><p className="text-3xl font-semibold">S/{bolsaSemanal.toFixed(0)}</p></Card>
+              <Card><p className="text-xs text-slate-500">Cuota base</p><p className="text-3xl font-semibold">S/{(junta.cuota_base ?? junta.monto_cuota).toFixed(0)}</p></Card>
+              <Card><p className="text-xs text-slate-500">Incentivo turno</p><p className="text-3xl font-semibold">{junta.tipo_junta === 'incentivo' ? `±${Number(junta.incentivo_porcentaje ?? 0).toFixed(0)}%` : 'Sin incentivo'}</p><p className="text-xs text-slate-500">{junta.tipo_junta === 'incentivo' ? incentivoLabel : 'No aplica para esta junta'}</p></Card>
+              <Card><p className="text-xs text-slate-500">Integrantes</p><p className="text-3xl font-semibold">{miembrosActuales}/{junta.participantes_max}</p><p className="text-xs text-slate-500">{faltantes > 0 ? `Faltan ${faltantes}` : 'Grupo completo'}</p></Card>
+            </div>
           </Card>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Card><p className="text-xs text-slate-500">Bolsa semanal</p><p className="text-2xl font-bold">S/ {simulacion.bolsaBase.toFixed(2)}</p></Card>
-            <Card><p className="text-xs text-slate-500">Cuota base</p><p className="text-2xl font-bold">S/ {simulacion.cuotaBase.toFixed(2)}</p></Card>
-            <Card><p className="text-xs text-slate-500">Incentivo</p><p className="text-sm font-semibold">{incentiveLabel}</p></Card>
-            <Card className="space-y-2">
-              <p className="text-xs text-slate-500">Integrantes</p>
-              <p className="text-2xl font-bold">{miembrosActuales}/{junta.participantes_max}</p>
-              <div className="h-2 rounded-full bg-slate-200">
-                <div className="h-full rounded-full bg-slate-900" style={{ width: `${progreso}%` }} />
-              </div>
-              <p className="text-xs text-slate-600">{faltantes === 0 ? 'Junta completa' : `Faltan ${faltantes} integrantes`}</p>
-            </Card>
-          </div>
-
           <Card>
-            <h2 className="mb-2 font-semibold">Integrantes de la semana actual</h2>
-            {miembrosNormalizados.length === 0 ? (
-              <p className="text-sm text-slate-600">Aún no hay integrantes registrados.</p>
-            ) : (
-              <div className="space-y-2">
-                {miembrosNormalizados.map((member, index) => {
-                  const isSelf = member.profile_id === user?.id;
-                  const displayName = member.profile_id === junta.admin_id ? 'Creador' : isSelf ? 'Tú' : `Integrante ${index + 1}`;
-                  const paymentStatus = member.orden_turno < currentWeek ? 'Pagado' : member.orden_turno === currentWeek ? 'Pendiente' : 'Por venir';
-                  return (
-                    <div key={member.id} className="flex items-center justify-between rounded-md border p-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${getAvatarColor(displayName)}`}>{getInitial(displayName)}</div>
-                        <div>
-                          <p className="font-medium">{displayName}</p>
-                          <p className="text-xs text-slate-500">Turno {member.orden_turno} · {member.rol ?? 'participante'}</p>
-                        </div>
-                      </div>
-                      <Badge>{paymentStatus}</Badge>
+            <h2 className="mb-3 text-xl font-semibold">Integrantes · semana actual</h2>
+            <div className="space-y-2">
+              {weeklyMemberRows.map((member) => (
+                <div key={member.id} className="flex items-center justify-between rounded-md border p-2">
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold ${getAvatarColor(member.displayName)}`}>{getInitial(member.displayName)}</div>
+                    <div>
+                      <p className="font-medium">{member.displayName}</p>
+                      <p className="text-sm text-slate-500">Turno #{member.turno} · {member.memberType} · rating {member.trustScore / 20}</p>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-sm font-medium ${statusColor(member.paymentStatus)}`}>{member.paymentStatus}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-sm text-slate-600">{paidCount}/{miembrosActuales} pagaron esta semana · Cierre ventana: hoy 12:00pm · Fondo garantía: S/{((junta.cuota_base ?? junta.monto_cuota) * 0.25).toFixed(0)}</p>
           </Card>
 
-          <Card>
-            <h2 className="mb-3 font-semibold">Cronograma y simulación</h2>
-            <div className="overflow-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-slate-500">
-                    <th className="py-2">Turno</th>
-                    <th>Fecha ronda</th>
-                    <th>Cuota/ronda</th>
-                    <th>Estado</th>
-                    <th>Total aportado ciclo</th>
-                    <th>Monto recibido</th>
-                    <th>Ajuste</th>
-                    <th>Beneficio/Costo neto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {simulacion.rows.map((row) => {
-                    const status = row.turno === myTurn ? 'Tu turno' : row.turno < currentWeek ? 'Pagado' : row.turno === currentWeek ? 'Pendiente' : 'Por venir';
-                    return (
-                      <tr key={row.turno} className="border-b">
-                        <td className="py-2">#{row.turno}</td>
-                        <td>{row.fechaRonda}</td>
-                        <td>S/ {row.cuotaPorRonda.toFixed(2)}</td>
-                        <td>{status}</td>
-                        <td>S/ {row.totalAportadoCiclo.toFixed(2)}</td>
-                        <td>S/ {row.montoRecibido.toFixed(2)}</td>
-                        <td className={row.ajuste >= 0 ? 'text-emerald-700' : 'text-amber-700'}>{row.ajuste >= 0 ? '+' : ''}S/ {row.ajuste.toFixed(2)}</td>
-                        <td className={row.neto >= 0 ? 'text-emerald-700' : 'text-amber-700'}>{row.neto >= 0 ? '+' : ''}S/ {row.neto.toFixed(2)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+          <Card className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => router.push(`/juntas/${junta.id}/schedule`)}>Ver cronograma completo</Button>
+            <Button variant="outline" onClick={() => router.push(`/juntas/${junta.id}/payments`)}>Ver pagos de esta semana</Button>
+            <Button variant="outline">Registrar incidencia</Button>
+            <Button variant="outline" onClick={() => { try { navigator.clipboard.writeText(shareUrl); } catch { /* ignore */ } }}>Compartir enlace invitación</Button>
+            <Button variant="outline" onClick={() => router.push(`/juntas/${junta.id}`)} disabled={junta.estado === 'activa'}>Editar configuración básica</Button>
+            <Button
+              variant="ghost"
+              disabled={miembrosActuales < junta.participantes_max || junta.estado === 'activa'}
+              onClick={async () => {
+                const result = await activateJuntaIfReady({ juntaId: junta.id });
+                if (!result.ok) return;
+                const nextJunta = { ...junta, ...result.data };
+                setJunta(nextJunta);
+                setData({ juntas: juntas.map((item) => (item.id === junta.id ? nextJunta : item)) });
+              }}
+            >
+              Activar junta
+            </Button>
+            {junta.estado !== 'activa' && (
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  if (!user) return;
+                  const ok = window.confirm('¿Seguro que deseas eliminar esta junta?');
+                  if (!ok) return;
+                  const result = await deleteDraftJunta({ juntaId: junta.id, currentProfileId: user.id });
+                  if (!result.ok) return;
+                  setData({ juntas: juntas.filter((item) => item.id !== junta.id), members: members.filter((item) => item.junta_id !== junta.id) });
+                  router.replace('/juntas');
+                }}
+              >
+                Eliminar junta
+              </Button>
+            )}
           </Card>
         </>
       )}
 
-      {activeView === 'participante' && isCurrentUserMember && (
+      {activeView === 'participante' && canViewParticipant && (
         <>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Card className="space-y-2">
-              <p className="text-xs text-slate-500">Tu turno</p>
-              <p className="text-2xl font-bold">#{myTurn ?? '-'}</p>
-              <p className="text-sm text-slate-600">{myTurnRow ? `Semana ${myTurnRow.turno} · ${myTurnRow.fechaRonda}` : 'Turno por definir'}</p>
-              <p className="text-sm text-slate-700">Recibirás S/ {myTurnRow ? myTurnRow.montoRecibido.toFixed(2) : '0.00'}</p>
-              <p className="text-sm text-slate-700">Aporte esta semana S/ {(junta.cuota_base ?? junta.monto_cuota).toFixed(2)}</p>
-            </Card>
-            <Card className="space-y-2">
-              <p className="text-xs text-slate-500">Score de confianza</p>
-              <p className="text-2xl font-bold">{Math.max(60, 100 - (currentWeek > (myTurn ?? currentWeek) ? 5 : 0))}/100</p>
-              <p className="text-xs text-slate-600">Pagos a tiempo: {Math.max(currentWeek - 1, 0)}</p>
-              <p className="text-xs text-slate-600">Fondo de garantía: S/ {((junta.cuota_base ?? junta.monto_cuota) * 0.1).toFixed(2)}</p>
-            </Card>
-          </div>
+          <Card className="border-amber-200 bg-amber-50">
+            <p className="text-base font-semibold text-amber-800">{urgencyBanner}</p>
+          </Card>
+
+          <Card className="border-0 bg-indigo-50 text-center">
+            <p className="text-6xl font-bold text-indigo-700">#{myTurn ?? '-'}</p>
+            <p className="text-2xl text-indigo-700">{myTurn === currentWeek ? `Tu turno · Semana ${currentWeek}` : `Tu turno será en semana ${myTurn ?? '-'}`}</p>
+            <p className="text-xl text-indigo-700">Recibirás S/{(myTurnRow?.montoRecibido ?? simulacion.bolsaBase).toFixed(0)} · Aporte esta semana S/{(junta.cuota_base ?? junta.monto_cuota).toFixed(0)}</p>
+          </Card>
 
           <Card>
-            <h2 className="mb-2 font-semibold">Cronograma del participante</h2>
+            <h2 className="mb-2 text-xl font-semibold">Esta semana · semana {currentWeek}</h2>
             <div className="space-y-2">
+              <div className="flex items-center justify-between rounded-md border p-2"><p><strong>Tú</strong> · Turno #{myTurn ?? '-'}</p><span className={`rounded-full px-3 py-1 ${statusColor(participantStatus)}`}>{participantStatus}</span></div>
+              <div className="flex items-center justify-between rounded-md border p-2"><p><strong>Recibe esta semana:</strong> Turno #{currentWeek}</p><span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-700">En curso</span></div>
+              <div className="rounded-md border p-2 text-slate-600">{Math.max(miembrosActuales - 2, 0)} integrantes más · {paidCount} pagaron · {pendingCount} pendientes</div>
+            </div>
+          </Card>
+
+          <Card>
+            <h2 className="mb-2 text-xl font-semibold">Tu cronograma completo</h2>
+            <div className="space-y-1">
               {simulacion.rows.map((row) => {
-                const status = row.turno === myTurn ? 'Tu turno' : row.turno < currentWeek ? 'Pagado' : row.turno === currentWeek ? 'Pendiente' : 'Por venir';
+                const rowStatus = row.turno < currentWeek ? 'pagado' : row.turno === currentWeek ? participantStatus.toLowerCase() : 'por_venir';
+                const isMyTurn = row.turno === myTurn;
                 return (
-                  <div key={`participant-${row.turno}`} className="flex items-center justify-between rounded-md border p-2 text-sm">
-                    <p>Semana {row.turno} · {row.fechaRonda}</p>
-                    <div className="flex items-center gap-2">
-                      <Badge>{status}</Badge>
-                      <span>S/ {row.cuotaPorRonda.toFixed(2)}</span>
-                    </div>
+                  <div key={row.turno} className="grid grid-cols-[60px_1fr_1fr] gap-2 border-b py-2 text-sm">
+                    <p className={isMyTurn ? 'font-semibold text-indigo-700' : ''}>S{row.turno}</p>
+                    <p className={isMyTurn ? 'font-semibold text-indigo-700' : ''}>{row.fechaRonda}</p>
+                    <p className={isMyTurn ? 'font-semibold text-indigo-700' : ''}>{isMyTurn ? `Tu turno — recibes S/${row.montoRecibido.toFixed(0)}` : rowStatus === 'pagado' ? `Pagaste S/${row.cuotaPorRonda.toFixed(0)} ✓` : rowStatus === 'vencido' ? `Vencido · S/${row.cuotaPorRonda.toFixed(0)}` : rowStatus === 'validando' ? `Validando · S/${row.cuotaPorRonda.toFixed(0)}` : `Por venir · S/${row.cuotaPorRonda.toFixed(0)}`}</p>
                   </div>
                 );
               })}
             </div>
           </Card>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <Card><p className="text-sm text-slate-500">Score de confianza</p><p className="text-4xl font-semibold text-emerald-700">{Math.max(65, 95 - pendingCount * 3)}</p><p className="text-sm text-slate-600">{paidCount} pagos a tiempo</p></Card>
+            <Card><p className="text-sm text-slate-500">Fondo garantía</p><p className="text-4xl font-semibold">S/{((junta.cuota_base ?? junta.monto_cuota) * 0.25).toFixed(0)}</p><p className="text-sm text-slate-600">Se devuelve al final</p></Card>
+          </div>
+
+          <Card className="flex flex-wrap gap-2">
+            <Button>{participantStatus === 'Pendiente' ? 'Pagar ahora' : participantStatus === 'Validando' ? 'Ver estado de validación' : 'Subir comprobante'}</Button>
+            <Button variant="outline">Contactar admin</Button>
+            <Button variant="outline">Ver reglas de la junta</Button>
+          </Card>
         </>
       )}
 
-      <div className="space-y-3">
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('integrantes');
-              router.replace(`/juntas/${junta.id}?tab=integrantes`);
-            }}
-            className={`rounded-md px-3 py-2 text-sm transition ${activeTab === 'integrantes' ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700'}`}
-          >
-            Integrantes
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('cronograma');
-              router.replace(`/juntas/${junta.id}?tab=cronograma`);
-            }}
-            className={`rounded-md px-3 py-2 text-sm transition ${activeTab === 'cronograma' ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700'}`}
-          >
-            Cronograma
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('pagos');
-              router.replace(`/juntas/${junta.id}?tab=pagos`);
-            }}
-            className={`rounded-md px-3 py-2 text-sm transition ${activeTab === 'pagos' ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700'}`}
-          >
-            Pagos
-          </button>
-        </div>
+      {activeView === 'sugerencias' && (
+        <Card className="space-y-2">
+          <h2 className="text-xl font-semibold">Cambios sugeridos</h2>
+          <ul className="list-inside list-disc space-y-1 text-sm text-slate-600">
+            <li>Agregar contador real de horas restantes hasta el cierre de ventana.</li>
+            <li>Conectar score de confianza a historial real de pagos aprobados.</li>
+            <li>Mostrar evidencias/comprobantes por semana en modal de revisión.</li>
+            <li>Habilitar registro de incidencias por integrante con seguimiento.</li>
+          </ul>
+          {isBackofficeAdmin && <p className="text-xs text-slate-500">Usuario con rol backoffice_admin detectado (mapeado actualmente desde global_role=admin).</p>}
+        </Card>
+      )}
 
-        {activeTab === 'integrantes' && (
-          <IntegrantesView members={miembrosNormalizados} juntaAdminId={junta.admin_id} currentUserId={user?.id} currentWeek={currentWeek} />
-        )}
-        {activeTab === 'cronograma' && (
-          <CronogramaView rows={simulacion.rows} currentWeek={currentWeek} myTurn={myTurn} />
-        )}
-        {activeTab === 'pagos' && (
-          <PagosView rows={simulacion.rows} currentWeek={currentWeek} myTurn={myTurn} />
-        )}
-      </div>
+      {isBackofficeAdmin && (
+        <Card className="space-y-2 border-blue-200 bg-blue-50">
+          <h2 className="text-lg font-semibold text-blue-800">Módulo backoffice · validación rápida</h2>
+          <p className="text-sm text-blue-700">Este usuario tiene permisos de plataforma para revisar pagos en el panel admin.</p>
+          <Button variant="outline" onClick={() => router.push('/admin')}>Ir a backoffice</Button>
+        </Card>
+      )}
     </div>
   );
 }
