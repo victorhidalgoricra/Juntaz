@@ -11,6 +11,8 @@ import { normalizePaymentStatus, paymentStatusLabel } from '@/lib/payment-status
 import { isJuntaActive } from '@/lib/junta-status';
 import { hasSupabase } from '@/lib/env';
 import { supabase } from '@/lib/supabase';
+import { fetchMembersByJuntaIds } from '@/services/juntas.repository';
+import { generarCronograma } from '@/services/schedule.service';
 
 const ALLOWED_RECEIPT_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
 
@@ -27,7 +29,8 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
   const currentSchedule = juntaSchedules.find((item) => item.estado === 'pendiente')
     ?? juntaSchedules.find((item) => item.fecha_vencimiento >= today)
     ?? juntaSchedules[0];
-  const isMember = members.some((member) => member.junta_id === params.id && member.profile_id === user?.id && member.estado === 'activo');
+  const isCreator = Boolean(user?.id && junta?.admin_id && user.id === junta.admin_id);
+  const isMember = isCreator || members.some((member) => member.junta_id === params.id && member.profile_id === user?.id && member.estado === 'activo');
 
   const existingPayment = payments.find(
     (payment) => payment.junta_id === params.id && payment.profile_id === user?.id && payment.schedule_id === currentSchedule?.id
@@ -51,6 +54,40 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
     if (!currentSchedule) return 'Ronda no disponible';
     return `Semana ${currentSchedule.cuota_numero} · vence ${new Date(currentSchedule.fecha_vencimiento).toLocaleDateString('es-PE')}`;
   }, [currentSchedule]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!junta) return;
+    if (juntaSchedules.length > 0) return;
+
+    const fallbackSchedules = generarCronograma({
+      juntaId: junta.id,
+      participantes: junta.participantes_max,
+      monto: junta.cuota_base ?? junta.monto_cuota,
+      frecuencia: junta.frecuencia_pago,
+      fechaInicio: junta.fecha_inicio
+    });
+    setData({ schedules: [...schedules, ...fallbackSchedules] });
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Registrar pago debug] schedule fallback generado', {
+        juntaId: junta.id,
+        generatedRounds: fallbackSchedules.length
+      });
+    }
+  }, [junta, juntaSchedules.length, schedules, setData]);
+
+  useEffect(() => {
+    if (!user || !junta) return;
+    if (isMember) return;
+    if (!hasSupabase) return;
+
+    fetchMembersByJuntaIds([junta.id]).then((result) => {
+      if (!result.ok) return;
+      if (result.data.length === 0) return;
+      setData({ members: [...members.filter((m) => m.junta_id !== junta.id), ...result.data] });
+    });
+  }, [isMember, junta, members, setData, user]);
 
   useEffect(() => {
     if (!receiptFile || receiptFile.type === 'application/pdf') {
@@ -98,10 +135,20 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
       currentScheduleCuota: currentSchedule?.cuota_numero,
       memberId: user?.id,
       isMember,
+      isCreator,
       existingPaymentId: existingPayment?.id,
-      existingPaymentStatus: existingPayment?.estado
+      existingPaymentStatus: existingPayment?.estado,
+      blockerReason: !junta
+        ? 'junta_missing'
+        : !isJuntaActive(junta.estado)
+          ? 'junta_inactive'
+          : !isMember
+            ? 'not_member'
+            : !currentSchedule
+              ? 'schedule_missing'
+              : 'ready'
     });
-  }, [currentSchedule?.cuota_numero, currentSchedule?.id, existingPayment?.estado, existingPayment?.id, isMember, junta?.estado, junta?.id, user?.id]);
+  }, [currentSchedule, existingPayment, isCreator, isMember, junta, user]);
 
   if (!user) return <Card>Debes iniciar sesión.</Card>;
   if (!isMember) return <Card>Solo los integrantes activos de esta junta pueden registrar pagos.</Card>;
