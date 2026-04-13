@@ -29,6 +29,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
   const [loadingJunta, setLoadingJunta] = useState(!storeJunta);
   const requestedView = searchParams.get('view');
   const [activeView, setActiveView] = useState<DetailView>('participante');
+  const [participantPaymentMessage, setParticipantPaymentMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -102,6 +103,10 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
       router.replace(`/juntas/${params.id}?view=${fallbackView}`);
     }
   }, [requestedView, defaultView, router, params.id]);
+
+  useEffect(() => {
+    if (juntaActiva) setParticipantPaymentMessage(null);
+  }, [juntaActiva]);
 
   if (loadingJunta) return <Card>Cargando junta...</Card>;
   if (!junta || !simulacion) return <Card><p className="text-sm text-slate-600">Junta no encontrada.</p></Card>;
@@ -197,6 +202,15 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
     if (view === 'participante' && !canViewParticipant) return;
     setActiveView(view);
     router.replace(`/juntas/${junta.id}?view=${view}`);
+  };
+
+  const handleParticipantPaymentClick = () => {
+    if (!juntaActiva) {
+      setParticipantPaymentMessage('Podrás registrar pagos cuando la junta se active.');
+      return;
+    }
+    setParticipantPaymentMessage(null);
+    router.push(`/juntas/${junta.id}/pagar`);
   };
 
   return (
@@ -329,17 +343,12 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
 
           <Card className="flex flex-wrap gap-2">
             <Button
-              disabled={!juntaActiva || participantStatus === 'Pagado'}
-              onClick={() => router.push(`/juntas/${junta.id}/pagar`)}
+              disabled={participantStatus === 'Pagado'}
+              onClick={handleParticipantPaymentClick}
             >
-              {participantStatus === 'Pagado'
-                ? 'Pago validado'
-                : participantStatus === 'Validando'
-                  ? 'Voucher enviado'
-                  : !juntaActiva
-                  ? 'Disponible al activar junta'
-                  : 'Pagar ahora'}
+              {participantStatus === 'Pagado' ? 'Pago validado' : 'Registrar pago'}
             </Button>
+            {participantPaymentMessage && <p className="text-sm text-amber-700">{participantPaymentMessage}</p>}
           </Card>
         </>
       )}
