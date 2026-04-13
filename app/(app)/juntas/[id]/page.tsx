@@ -13,7 +13,7 @@ import { Junta } from '@/types/domain';
 import { hasSupabase } from '@/lib/env';
 import { formatIncentiveLabel, getAvatarColor, getInitial } from '@/lib/profile-display';
 
-type DetailView = 'admin' | 'participante';
+type DetailView = 'admin' | 'participante' | 'sugerencias';
 type WeeklyPaymentStatus = 'Pagado' | 'Pendiente' | 'Validando' | 'Vencido' | 'Exonerado';
 
 function mapPaymentStatus(raw?: string): WeeklyPaymentStatus {
@@ -96,17 +96,12 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
   const defaultView: DetailView = canViewAdmin ? 'admin' : 'participante';
 
   useEffect(() => {
-    if (requestedView === 'admin' || requestedView === 'participante') {
+    if (requestedView === 'admin' || requestedView === 'participante' || requestedView === 'sugerencias') {
       setActiveView(requestedView);
       return;
     }
-
-    const fallbackView = defaultView;
-    setActiveView(fallbackView);
-    if (requestedView) {
-      router.replace(`/juntas/${params.id}?view=${fallbackView}`);
-    }
-  }, [requestedView, defaultView, router, params.id]);
+    setActiveView(defaultView);
+  }, [requestedView, defaultView]);
 
   if (loadingJunta) return <Card>Cargando junta...</Card>;
   if (!junta || !simulacion) return <Card><p className="text-sm text-slate-600">Junta no encontrada.</p></Card>;
@@ -183,6 +178,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => handleSwitchView('admin')} disabled={!canViewAdmin} className={`rounded-xl border px-4 py-2 text-sm ${activeView === 'admin' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-700'} ${!canViewAdmin ? 'cursor-not-allowed opacity-40' : ''}`}>Vista admin</button>
         <button type="button" onClick={() => handleSwitchView('participante')} disabled={!canViewParticipant} className={`rounded-xl border px-4 py-2 text-sm ${activeView === 'participante' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-700'} ${!canViewParticipant ? 'cursor-not-allowed opacity-40' : ''}`}>Vista participante</button>
+        <button type="button" onClick={() => handleSwitchView('sugerencias')} className={`rounded-xl border px-4 py-2 text-sm ${activeView === 'sugerencias' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-700'}`}>Cambios sugeridos</button>
       </div>
 
       {activeView === 'admin' && canViewAdmin && (
@@ -312,6 +308,19 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
             <Button variant="outline">Ver reglas de la junta</Button>
           </Card>
         </>
+      )}
+
+      {activeView === 'sugerencias' && (
+        <Card className="space-y-2">
+          <h2 className="text-xl font-semibold">Cambios sugeridos</h2>
+          <ul className="list-inside list-disc space-y-1 text-sm text-slate-600">
+            <li>Agregar contador real de horas restantes hasta el cierre de ventana.</li>
+            <li>Conectar score de confianza a historial real de pagos aprobados.</li>
+            <li>Mostrar evidencias/comprobantes por semana en modal de revisión.</li>
+            <li>Habilitar registro de incidencias por integrante con seguimiento.</li>
+          </ul>
+          {isBackofficeAdmin && <p className="text-xs text-slate-500">Usuario con rol backoffice_admin detectado (mapeado actualmente desde global_role=admin).</p>}
+        </Card>
       )}
 
       {isBackofficeAdmin && (
