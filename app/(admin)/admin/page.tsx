@@ -6,7 +6,6 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/store/app-store';
 import { useAuthStore } from '@/store/auth-store';
-import { normalizePaymentStatus } from '@/lib/payment-status';
 
 export default function AdminPage() {
   const { juntas, members, payments, schedules, setData } = useAppStore();
@@ -34,10 +33,7 @@ export default function AdminPage() {
   }));
 
   const pendingPayments = useMemo(
-    () => payments.filter((payment) => {
-      const status = normalizePaymentStatus(payment.estado);
-      return status === 'submitted' || status === 'validating' || status === 'rejected';
-    }).map((payment) => {
+    () => payments.filter((payment) => payment.estado === 'pendiente_aprobacion').map((payment) => {
       const junta = juntas.find((item) => item.id === payment.junta_id);
       const schedule = schedules.find((item) => item.id === payment.schedule_id);
       const member = members.find((item) => item.junta_id === payment.junta_id && item.profile_id === payment.profile_id);
@@ -81,10 +77,7 @@ export default function AdminPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Backoffice Administrador</h1>
-        <div className="flex gap-2">
-          <Link href="/admin/pagos"><Button variant="outline">Validar pagos</Button></Link>
-          <Link href="/dashboard"><Button variant="outline">Ir al producto</Button></Link>
-        </div>
+        <Link href="/dashboard"><Button variant="outline">Ir al producto</Button></Link>
       </div>
 
       <div className="grid gap-3 md:grid-cols-6">
@@ -134,10 +127,7 @@ export default function AdminPage() {
 
       <Card>
         <h2 className="mb-2 font-semibold">Incidencias / errores</h2>
-        <p className="text-sm text-slate-600">Pagos pendientes: {payments.filter((p) => {
-          const status = normalizePaymentStatus(p.estado);
-          return status === 'pending' || status === 'submitted' || status === 'validating' || status === 'rejected';
-        }).length}</p>
+        <p className="text-sm text-slate-600">Pagos pendientes: {payments.filter((p) => p.estado === 'pendiente_aprobacion').length}</p>
         <p className="text-sm text-slate-600">Cuotas vencidas: {schedules.filter((s) => s.estado === 'vencida').length}</p>
       </Card>
 

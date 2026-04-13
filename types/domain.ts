@@ -4,16 +4,7 @@ export type TipoJunta = 'normal' | 'incentivo';
 export type IncentivoRegla = 'primero_ultimo' | 'escalonado';
 export type EstadoMiembro = 'invitado' | 'activo' | 'pendiente' | 'moroso' | 'retirado';
 export type EstadoCuota = 'pendiente' | 'pagada' | 'vencida';
-export type EstadoPago =
-  | 'pending'
-  | 'submitted'
-  | 'validating'
-  | 'approved'
-  | 'rejected'
-  | 'overdue'
-  | 'pendiente_aprobacion'
-  | 'aprobado'
-  | 'rechazado';
+export type EstadoPago = 'pendiente_aprobacion' | 'aprobado' | 'rechazado';
 export type GlobalRole = 'user' | 'admin';
 
 export interface Profile {
@@ -83,13 +74,6 @@ export interface Payment {
   monto: number;
   estado: EstadoPago;
   comprobante_url?: string;
-  payment_method?: 'yape' | 'plin' | 'transferencia' | 'efectivo' | 'otro';
-  operation_number?: string;
-  participant_note?: string;
-  internal_note?: string;
-  validated_at?: string;
-  validated_by?: string;
-  rejection_reason?: string;
   pagado_en: string;
 }
 
