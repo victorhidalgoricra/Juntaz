@@ -17,16 +17,17 @@ const ALLOWED_RECEIPT_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'applicat
 export default function JuntaPayPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
-  const { juntas, schedules, payments, setData } = useAppStore();
+  const { juntas, schedules, payments, members, setData } = useAppStore();
 
   const junta = juntas.find((item) => item.id === params.id);
-  const currentSchedule = schedules
+  const juntaSchedules = schedules
     .filter((item) => item.junta_id === params.id)
-    .sort((a, b) => a.cuota_numero - b.cuota_numero)
-    .find((item) => item.estado === 'pendiente')
-    ?? schedules
-      .filter((item) => item.junta_id === params.id)
-      .sort((a, b) => a.cuota_numero - b.cuota_numero)[0];
+    .sort((a, b) => a.cuota_numero - b.cuota_numero);
+  const today = new Date().toISOString().slice(0, 10);
+  const currentSchedule = juntaSchedules.find((item) => item.estado === 'pendiente')
+    ?? juntaSchedules.find((item) => item.fecha_vencimiento >= today)
+    ?? juntaSchedules[0];
+  const isMember = members.some((member) => member.junta_id === params.id && member.profile_id === user?.id && member.estado === 'activo');
 
   const existingPayment = payments.find(
     (payment) => payment.junta_id === params.id && payment.profile_id === user?.id && payment.schedule_id === currentSchedule?.id
@@ -61,7 +62,49 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
     return () => URL.revokeObjectURL(url);
   }, [receiptFile]);
 
+  useEffect(() => {
+    if (!user || !junta || !currentSchedule || !isMember || !isJuntaActive(junta.estado)) return;
+    if (existingPayment) return;
+
+    const now = new Date().toISOString();
+    setData({
+      payments: [
+        ...payments,
+        {
+          id: crypto.randomUUID(),
+          junta_id: junta.id,
+          schedule_id: currentSchedule.id,
+          round_id: currentSchedule.id,
+          member_id: user.id,
+          profile_id: user.id,
+          expected_amount: currentSchedule.monto,
+          submitted_amount: currentSchedule.monto,
+          monto: currentSchedule.monto,
+          estado: 'pending',
+          payment_status: 'pending',
+          submitted_at: now,
+          pagado_en: now
+        }
+      ]
+    });
+  }, [currentSchedule, existingPayment, isMember, junta, payments, setData, user]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    console.log('[Registrar pago debug]', {
+      juntaId: junta?.id,
+      juntaEstado: junta?.estado,
+      currentScheduleId: currentSchedule?.id,
+      currentScheduleCuota: currentSchedule?.cuota_numero,
+      memberId: user?.id,
+      isMember,
+      existingPaymentId: existingPayment?.id,
+      existingPaymentStatus: existingPayment?.estado
+    });
+  }, [currentSchedule?.cuota_numero, currentSchedule?.id, existingPayment?.estado, existingPayment?.id, isMember, junta?.estado, junta?.id, user?.id]);
+
   if (!user) return <Card>Debes iniciar sesión.</Card>;
+  if (!isMember) return <Card>Solo los integrantes activos de esta junta pueden registrar pagos.</Card>;
   if (!junta || !currentSchedule) return <Card>No encontramos una cuota/ronda pendiente para esta junta.</Card>;
   if (!isJuntaActive(junta.estado)) return <Card>Aún no puedes registrar pagos porque la junta no está activa.</Card>;
 
