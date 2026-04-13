@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { useAppStore } from '@/store/app-store';
 import { useAuthStore } from '@/store/auth-store';
 import { normalizePaymentStatus, paymentStatusLabel } from '@/lib/payment-status';
+import { isJuntaActive } from '@/lib/junta-status';
 
 export default function JuntaPayPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -40,6 +41,7 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
 
   if (!user) return <Card>Debes iniciar sesión.</Card>;
   if (!junta || !currentSchedule) return <Card>No encontramos datos de pago para esta junta.</Card>;
+  if (!isJuntaActive(junta.estado)) return <Card>La junta aún está en formación. Podrás subir voucher cuando se active.</Card>;
 
   const submitVoucher = (event: FormEvent) => {
     event.preventDefault();

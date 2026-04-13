@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase';
 import { hasSupabase } from '@/lib/env';
 import { mapAuthErrorMessage } from '@/services/auth.service';
 import { useState } from 'react';
+import { checkProfileConflicts } from '@/services/profile.service';
 
 export function RegisterPageClient() {
   const router = useRouter();
@@ -38,19 +39,30 @@ export function RegisterPageClient() {
           const parsed = registerSchema.safeParse(values);
           if (!parsed.success) {
             const issue = parsed.error.issues[0];
-            setError(issue.path[0] as 'nombre' | 'celular' | 'email' | 'password', { message: issue.message });
+            setError(issue.path[0] as 'nombre' | 'dni' | 'celular' | 'email' | 'password', { message: issue.message });
             return;
           }
 
           try {
             setLoading(true);
             if (hasSupabase && supabase) {
+              const conflictCheck = await checkProfileConflicts({ dni: values.dni, celular: values.celular });
+              if (!conflictCheck.ok) throw new Error(conflictCheck.message);
+              if (conflictCheck.existsDni) {
+                setError('dni', { message: 'Este DNI ya está registrado.' });
+                return;
+              }
+              if (conflictCheck.existsCelular) {
+                setError('celular', { message: 'Este celular ya está registrado.' });
+                return;
+              }
+
               const emailRedirectTo = `${window.location.origin}/login?confirmed=1`;
               const { data, error } = await supabase.auth.signUp({
                 email: values.email,
                 password: values.password,
                 options: {
-                  data: { full_name: values.nombre, phone: values.celular },
+                  data: { full_name: values.nombre, phone: values.celular, dni: values.dni },
                   emailRedirectTo
                 }
               });
@@ -79,6 +91,8 @@ export function RegisterPageClient() {
       >
         <label className="text-sm font-medium">Nombre completo</label>
         <Input placeholder="Nombre y apellido" {...register('nombre')} />
+        <label className="text-sm font-medium">DNI</label>
+        <Input placeholder="12345678" {...register('dni')} />
         <label className="text-sm font-medium">Celular</label>
         <Input placeholder="987654321" {...register('celular')} />
         <label className="text-sm font-medium">Correo</label>
@@ -88,6 +102,7 @@ export function RegisterPageClient() {
         <Button className="w-full" disabled={loading}>{loading ? 'Creando cuenta...' : 'Crear cuenta'}</Button>
       </form>
       {formState.errors.nombre && <p className="text-xs text-red-500">{formState.errors.nombre.message}</p>}
+      {formState.errors.dni && <p className="text-xs text-red-500">{formState.errors.dni.message}</p>}
       {formState.errors.celular && <p className="text-xs text-red-500">{formState.errors.celular.message}</p>}
       {formState.errors.email && <p className="text-xs text-red-500">{formState.errors.email.message}</p>}
       {formState.errors.password && <p className="text-xs text-red-500">{formState.errors.password.message}</p>}
