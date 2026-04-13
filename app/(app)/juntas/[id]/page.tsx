@@ -12,17 +12,10 @@ import { calcularSimulacionJunta } from '@/services/incentive.service';
 import { Junta } from '@/types/domain';
 import { hasSupabase } from '@/lib/env';
 import { formatIncentiveLabel, getAvatarColor, getInitial } from '@/lib/profile-display';
+import { normalizePaymentStatus } from '@/lib/payment-status';
 
 type DetailView = 'admin' | 'participante';
-type WeeklyPaymentStatus = 'Pagado' | 'Pendiente' | 'Validando' | 'Vencido' | 'Exonerado';
-
-function mapPaymentStatus(raw?: string): WeeklyPaymentStatus {
-  if (!raw) return 'Pendiente';
-  if (raw === 'aprobado') return 'Pagado';
-  if (raw === 'pendiente_aprobacion') return 'Validando';
-  if (raw === 'rechazado') return 'Pendiente';
-  return 'Pendiente';
-}
+type WeeklyPaymentStatus = 'Pagado' | 'Pendiente' | 'Validando' | 'Vencido' | 'Exonerado' | 'Rechazado';
 
 export default function JuntaDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -123,7 +116,18 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
   const weeklyMemberRows = miembrosActivos.map((member, index) => {
     const displayName = member.profile_id === junta.admin_id ? 'Creador' : member.profile_id === user?.id ? 'Tú' : `Integrante ${index + 1}`;
     const memberPayment = payments.find((p) => p.junta_id === junta.id && p.profile_id === member.profile_id && p.schedule_id === currentRoundSchedule?.id);
-    const paymentStatus: WeeklyPaymentStatus = currentRoundSchedule?.estado === 'vencida' && !memberPayment ? 'Vencido' : mapPaymentStatus(memberPayment?.estado);
+    const normalized = normalizePaymentStatus(memberPayment?.estado);
+    const paymentStatus: WeeklyPaymentStatus = currentRoundSchedule?.estado === 'vencida' && !memberPayment
+      ? 'Vencido'
+      : normalized === 'approved'
+        ? 'Pagado'
+        : normalized === 'submitted' || normalized === 'validating'
+          ? 'Validando'
+          : normalized === 'rejected'
+            ? 'Rechazado'
+            : normalized === 'overdue'
+              ? 'Vencido'
+              : 'Pendiente';
     const trustScore = Math.max(60, 92 - Math.abs(member.orden_turno - currentWeek) * 2);
 
     return {
@@ -142,7 +146,16 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
   const participantPayment = currentRoundSchedule
     ? payments.find((payment) => payment.junta_id === junta.id && payment.profile_id === user?.id && payment.schedule_id === currentRoundSchedule.id)
     : null;
-  const participantStatus = currentRoundSchedule?.estado === 'vencida' && !participantPayment ? 'Vencido' : mapPaymentStatus(participantPayment?.estado);
+  const participantStatus: WeeklyPaymentStatus = currentRoundSchedule?.estado === 'vencida' && !participantPayment
+    ? 'Vencido'
+    : (() => {
+      const normalized = normalizePaymentStatus(participantPayment?.estado);
+      if (normalized === 'approved') return 'Pagado';
+      if (normalized === 'submitted' || normalized === 'validating') return 'Validando';
+      if (normalized === 'rejected') return 'Rechazado';
+      if (normalized === 'overdue') return 'Vencido';
+      return 'Pendiente';
+    })();
 
   const urgencyBanner = (() => {
     const dueText = currentRoundSchedule?.fecha_vencimiento ? new Date(currentRoundSchedule.fecha_vencimiento).toLocaleDateString('es-PE') : 'hoy 12:00pm';
@@ -167,7 +180,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
   const statusColor = (status: WeeklyPaymentStatus) => {
     if (status === 'Pagado') return 'bg-emerald-100 text-emerald-700';
     if (status === 'Validando') return 'bg-blue-100 text-blue-700';
-    if (status === 'Vencido') return 'bg-rose-100 text-rose-700';
+    if (status === 'Vencido' || status === 'Rechazado') return 'bg-rose-100 text-rose-700';
     return 'bg-amber-100 text-amber-700';
   };
 
@@ -307,9 +320,16 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
           </div>
 
           <Card className="flex flex-wrap gap-2">
-            <Button>{participantStatus === 'Pendiente' ? 'Pagar ahora' : participantStatus === 'Validando' ? 'Ver estado de validación' : 'Subir comprobante'}</Button>
-            <Button variant="outline">Contactar admin</Button>
-            <Button variant="outline">Ver reglas de la junta</Button>
+            <Button
+              disabled={participantStatus === 'Pagado'}
+              onClick={() => router.push(`/juntas/${junta.id}/pagar`)}
+            >
+              {participantStatus === 'Pagado'
+                ? 'Pago validado'
+                : participantStatus === 'Validando'
+                  ? 'Voucher enviado'
+                  : 'Pagar ahora'}
+            </Button>
           </Card>
         </>
       )}
