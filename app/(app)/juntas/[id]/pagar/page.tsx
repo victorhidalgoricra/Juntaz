@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ const ALLOWED_RECEIPT_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'applicat
 
 export default function JuntaPayPage({ params }: { params: { id: string } }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const { juntas, schedules, payments, members, setData } = useAppStore();
 
@@ -25,8 +26,12 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
   const juntaSchedules = schedules
     .filter((item) => item.junta_id === params.id)
     .sort((a, b) => a.cuota_numero - b.cuota_numero);
+  const requestedCuotaId = searchParams.get('cuotaId');
+  const requestedMonto = Number(searchParams.get('monto') ?? '0');
+  const isFromDashboard = searchParams.get('src') === 'dashboard';
   const today = new Date().toISOString().slice(0, 10);
-  const currentSchedule = juntaSchedules.find((item) => item.estado === 'pendiente')
+  const currentSchedule = (requestedCuotaId ? juntaSchedules.find((item) => item.id === requestedCuotaId) : null)
+    ?? juntaSchedules.find((item) => item.estado === 'pendiente')
     ?? juntaSchedules.find((item) => item.fecha_vencimiento >= today)
     ?? juntaSchedules[0];
   const isCreator = Boolean(user?.id && junta?.admin_id && user.id === junta.admin_id);
@@ -36,7 +41,7 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
     (payment) => payment.junta_id === params.id && payment.profile_id === user?.id && payment.schedule_id === currentSchedule?.id
   );
 
-  const expectedAmount = currentSchedule?.monto ?? junta?.monto_cuota ?? 0;
+  const expectedAmount = requestedMonto > 0 ? requestedMonto : currentSchedule?.monto ?? junta?.monto_cuota ?? 0;
   const monto = expectedAmount;
   const [method, setMethod] = useState<'yape' | 'plin' | 'transferencia' | 'efectivo' | 'otro'>(existingPayment?.payment_method ?? 'yape');
   const [operationNumber, setOperationNumber] = useState(existingPayment?.operation_number ?? '');
@@ -49,6 +54,7 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
 
   const currentStatus = normalizePaymentStatus(existingPayment?.estado);
   const canSubmitPayment = !existingPayment || currentStatus === 'pending' || currentStatus === 'rejected' || currentStatus === 'overdue';
+  const alreadyPaid = currentStatus === 'approved';
 
   const scheduleLabel = useMemo(() => {
     if (!currentSchedule) return 'Ronda no disponible';
@@ -245,6 +251,7 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
         <p className="text-sm text-slate-600">Monto esperado: <span className="font-semibold">S/ {currentSchedule.monto.toFixed(2)}</span></p>
         <p className="text-sm text-slate-600">Fecha límite: <span className="font-semibold">{new Date(currentSchedule.fecha_vencimiento).toLocaleDateString('es-PE')}</span></p>
         <p className="text-sm text-slate-600">Estado actual: <span className="font-semibold">{paymentStatusLabel(currentStatus)}</span></p>
+        {alreadyPaid && <p className="text-sm font-medium text-emerald-700">Pago ya registrado</p>}
       </Card>
 
       <form onSubmit={submitVoucher} className="space-y-3">
@@ -296,7 +303,7 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
         {message && <p className="text-sm text-blue-700">{message}</p>}
 
         <div className="flex gap-2">
-          <Button type="submit" disabled={submitting}>{submitting ? 'Enviando...' : 'Enviar a validación'}</Button>
+          <Button type="submit" disabled={submitting || alreadyPaid}>{submitting ? 'Enviando...' : isFromDashboard ? 'Confirmar pago' : 'Enviar a validación'}</Button>
           <Button type="button" variant="outline" onClick={() => router.push(`/juntas/${junta.id}?view=participante`)}>Volver</Button>
         </div>
       </form>
