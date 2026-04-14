@@ -13,10 +13,12 @@ import { Junta, JuntaMember, Payment, PaymentSchedule, Payout } from '@/types/do
 
 type PendingPaymentBannerData = {
   juntaId: string;
+  cuotaId: string;
   juntaNombre: string;
   monto: number;
   dueDate: Date;
   isOverdue: boolean;
+  hasMultiplePending: boolean;
 };
 
 type JuntaScoreData = {
@@ -109,10 +111,12 @@ function getPendingPaymentBanner(params: {
   const dueDate = new Date(nextDue.fecha_vencimiento);
   return {
     juntaId: junta.id,
+    cuotaId: nextDue.id,
     juntaNombre: junta.nombre,
     monto: nextDue.monto,
     dueDate,
-    isOverdue: dueDate < today || nextDue.estado === 'vencida'
+    isOverdue: dueDate < today || nextDue.estado === 'vencida',
+    hasMultiplePending: dueCandidates.length > 1
   };
 }
 
@@ -287,9 +291,11 @@ function DashboardHeader({ displayName }: { displayName: string }) {
 function PendingPaymentBanner({ data }: { data: PendingPaymentBannerData }) {
   const isToday = format(data.dueDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
   const dueLabel = isToday ? `vence hoy ${format(data.dueDate, 'HH:mm')}` : `vence ${format(data.dueDate, 'dd MMM', { locale: es })}`;
+  const directHref = `/juntas/${data.juntaId}/registrar-pago?juntaId=${encodeURIComponent(data.juntaId)}&cuotaId=${encodeURIComponent(data.cuotaId)}&src=dashboard`;
+  const fallbackHref = `/juntas/${data.juntaId}/payments`;
 
   return (
-    <Link href={`/juntas/${data.juntaId}/payments`}>
+    <Link href={data.hasMultiplePending ? fallbackHref : directHref}>
       <Card className="border border-amber-300 bg-amber-100 p-4 hover:border-amber-400">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">

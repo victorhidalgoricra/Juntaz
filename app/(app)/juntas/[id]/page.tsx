@@ -260,11 +260,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
           </Card>
 
           <Card className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => router.push(`/juntas/${junta.id}/schedule`)}>Ver cronograma completo</Button>
-            <Button variant="outline" onClick={() => router.push(`/juntas/${junta.id}/payments`)}>Ver pagos de esta semana</Button>
-            <Button variant="outline">Registrar incidencia</Button>
-            <Button variant="outline" onClick={() => { try { navigator.clipboard.writeText(shareUrl); } catch { /* ignore */ } }}>Compartir enlace invitación</Button>
-            <Button variant="outline" onClick={() => router.push(`/juntas/${junta.id}`)} disabled={junta.estado === 'activa'}>Editar configuración básica</Button>
+            <Button variant="outline" onClick={() => { try { navigator.clipboard.writeText(shareUrl); } catch { /* ignore */ } }}>Compartir enlace</Button>
             <Button
               variant="ghost"
               disabled={miembrosActuales < junta.participantes_max || junta.estado === 'activa'}
