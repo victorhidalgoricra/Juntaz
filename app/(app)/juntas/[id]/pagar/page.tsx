@@ -27,7 +27,6 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
     .filter((item) => item.junta_id === params.id)
     .sort((a, b) => a.cuota_numero - b.cuota_numero);
   const requestedCuotaId = searchParams.get('cuotaId');
-  const requestedMonto = Number(searchParams.get('monto') ?? '0');
   const isFromDashboard = searchParams.get('src') === 'dashboard';
   const today = new Date().toISOString().slice(0, 10);
   const currentSchedule = (requestedCuotaId ? juntaSchedules.find((item) => item.id === requestedCuotaId) : null)
@@ -41,7 +40,7 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
     (payment) => payment.junta_id === params.id && payment.profile_id === user?.id && payment.schedule_id === currentSchedule?.id
   );
 
-  const expectedAmount = requestedMonto > 0 ? requestedMonto : currentSchedule?.monto ?? junta?.monto_cuota ?? 0;
+  const expectedAmount = currentSchedule?.monto ?? junta?.monto_cuota ?? 0;
   const monto = expectedAmount;
   const [method, setMethod] = useState<'yape' | 'plin' | 'transferencia' | 'efectivo' | 'otro'>(existingPayment?.payment_method ?? 'yape');
   const [operationNumber, setOperationNumber] = useState(existingPayment?.operation_number ?? '');
@@ -55,6 +54,7 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
   const currentStatus = normalizePaymentStatus(existingPayment?.estado);
   const canSubmitPayment = !existingPayment || currentStatus === 'pending' || currentStatus === 'rejected' || currentStatus === 'overdue';
   const alreadyPaid = currentStatus === 'approved';
+  const isUnderValidation = currentStatus === 'submitted' || currentStatus === 'validating';
 
   const scheduleLabel = useMemo(() => {
     if (!currentSchedule) return 'Ronda no disponible';
@@ -252,6 +252,7 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
         <p className="text-sm text-slate-600">Fecha límite: <span className="font-semibold">{new Date(currentSchedule.fecha_vencimiento).toLocaleDateString('es-PE')}</span></p>
         <p className="text-sm text-slate-600">Estado actual: <span className="font-semibold">{paymentStatusLabel(currentStatus)}</span></p>
         {alreadyPaid && <p className="text-sm font-medium text-emerald-700">Pago ya registrado</p>}
+        {isUnderValidation && <p className="text-sm font-medium text-blue-700">Tu pago está en validación</p>}
       </Card>
 
       <form onSubmit={submitVoucher} className="space-y-3">
@@ -260,7 +261,7 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
           <Input type="number" value={monto} readOnly />
 
           <label className="text-sm font-medium">Método de pago</label>
-          <select className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" value={method} onChange={(event) => setMethod(event.target.value as 'yape' | 'plin' | 'transferencia' | 'efectivo' | 'otro')}>
+          <select className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" value={method} disabled={isUnderValidation || alreadyPaid} onChange={(event) => setMethod(event.target.value as 'yape' | 'plin' | 'transferencia' | 'efectivo' | 'otro')}>
             <option value="yape">Yape</option>
             <option value="plin">Plin</option>
             <option value="transferencia">Transferencia</option>
@@ -269,12 +270,13 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
           </select>
 
           <label className="text-sm font-medium">Número de operación (opcional)</label>
-          <Input value={operationNumber} onChange={(event) => setOperationNumber(event.target.value)} />
+          <Input value={operationNumber} disabled={isUnderValidation || alreadyPaid} onChange={(event) => setOperationNumber(event.target.value)} />
 
           <label className="text-sm font-medium">Voucher / comprobante (obligatorio · JPG, PNG o PDF)</label>
           <Input
             type="file"
             accept="image/jpeg,image/jpg,image/png,application/pdf"
+            disabled={isUnderValidation || alreadyPaid}
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (!file) return;
@@ -297,13 +299,13 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
           {!previewUrl && receiptFile?.type === 'application/pdf' && <p className="text-xs text-blue-700">PDF cargado correctamente. Se enviará como comprobante.</p>}
 
           <label className="text-sm font-medium">Observación (opcional)</label>
-          <textarea className="min-h-24 w-full rounded-md border border-slate-300 p-3 text-sm" value={note} onChange={(event) => setNote(event.target.value)} />
+          <textarea className="min-h-24 w-full rounded-md border border-slate-300 p-3 text-sm" value={note} disabled={isUnderValidation || alreadyPaid} onChange={(event) => setNote(event.target.value)} />
         </Card>
 
         {message && <p className="text-sm text-blue-700">{message}</p>}
 
         <div className="flex gap-2">
-          <Button type="submit" disabled={submitting || alreadyPaid}>{submitting ? 'Enviando...' : isFromDashboard ? 'Confirmar pago' : 'Enviar a validación'}</Button>
+          <Button type="submit" disabled={submitting || alreadyPaid || isUnderValidation}>{submitting ? 'Enviando...' : isFromDashboard ? 'Confirmar pago' : 'Enviar a validación'}</Button>
           <Button type="button" variant="outline" onClick={() => router.push(`/juntas/${junta.id}?view=participante`)}>Volver</Button>
         </div>
       </form>

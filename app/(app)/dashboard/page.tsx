@@ -291,7 +291,7 @@ function DashboardHeader({ displayName }: { displayName: string }) {
 function PendingPaymentBanner({ data }: { data: PendingPaymentBannerData }) {
   const isToday = format(data.dueDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
   const dueLabel = isToday ? `vence hoy ${format(data.dueDate, 'HH:mm')}` : `vence ${format(data.dueDate, 'dd MMM', { locale: es })}`;
-  const directHref = `/juntas/${data.juntaId}/registrar-pago?juntaId=${encodeURIComponent(data.juntaId)}&cuotaId=${encodeURIComponent(data.cuotaId)}&monto=${encodeURIComponent(String(data.monto))}&src=dashboard`;
+  const directHref = `/juntas/${data.juntaId}/registrar-pago?juntaId=${encodeURIComponent(data.juntaId)}&cuotaId=${encodeURIComponent(data.cuotaId)}&src=dashboard`;
   const fallbackHref = `/juntas/${data.juntaId}/payments`;
 
   return (
