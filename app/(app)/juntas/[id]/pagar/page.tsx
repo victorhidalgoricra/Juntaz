@@ -12,9 +12,13 @@ import { isJuntaActive } from '@/lib/junta-status';
 import { hasSupabase } from '@/lib/env';
 import { supabase } from '@/lib/supabase';
 import { fetchMembersByJuntaIds } from '@/services/juntas.repository';
+import {
+  PAYMENT_RECEIPT_ACCEPT,
+  PaymentReceiptUploadError,
+  uploadPaymentReceiptFile,
+  validatePaymentReceiptFile
+} from '@/services/payment-receipt-upload.service';
 import { generarCronograma } from '@/services/schedule.service';
-
-const ALLOWED_RECEIPT_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
 
 export default function JuntaPayPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -164,15 +168,13 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
   const uploadReceiptIfNeeded = async () => {
     if (!receiptFile) return fileName || undefined;
     if (!hasSupabase || !supabase) return receiptFile.name;
-
-    const ext = receiptFile.name.split('.').pop() ?? 'bin';
-    const path = `${params.id}/${user.id}/${currentSchedule.id}-${Date.now()}.${ext}`;
-
-    const { error } = await supabase.storage.from('payment-receipts').upload(path, receiptFile, { upsert: true });
-    if (error) throw new Error(`No pudimos subir el comprobante: ${error.message}`);
-
-    const { data } = supabase.storage.from('payment-receipts').getPublicUrl(path);
-    return data.publicUrl;
+    return uploadPaymentReceiptFile({
+      supabase,
+      file: receiptFile,
+      juntaId: params.id,
+      profileId: user.id,
+      scheduleId: currentSchedule.id
+    });
   };
 
   const submitVoucher = async (event: FormEvent) => {
@@ -236,7 +238,12 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
       setTimeout(() => router.push(`/juntas/${junta.id}?view=participante`), 900);
     } catch (error) {
       console.error('[Registrar pago] error', error);
-      setMessage(error instanceof Error ? error.message : 'No pudimos registrar tu pago.');
+      if (error instanceof PaymentReceiptUploadError) {
+        console.error(error.technicalMessage);
+        setMessage(error.userMessage);
+      } else {
+        setMessage(error instanceof Error ? error.message : 'No pudimos registrar tu pago.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -275,17 +282,17 @@ export default function JuntaPayPage({ params }: { params: { id: string } }) {
           <label className="text-sm font-medium">Voucher / comprobante (obligatorio · JPG, PNG o PDF)</label>
           <Input
             type="file"
-            accept="image/jpeg,image/jpg,image/png,application/pdf"
+            accept={PAYMENT_RECEIPT_ACCEPT}
             disabled={isUnderValidation || alreadyPaid}
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (!file) return;
-              if (!ALLOWED_RECEIPT_TYPES.includes(file.type)) {
-                setMessage('Formato no permitido. Usa JPG, PNG o PDF.');
-                return;
-              }
-              if (file.size > 5 * 1024 * 1024) {
-                setMessage('El archivo supera 5MB. Sube un comprobante más liviano.');
+              const validationError = validatePaymentReceiptFile(file);
+              if (validationError) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.error(validationError.technicalMessage);
+                }
+                setMessage(validationError.userMessage);
                 return;
               }
               setReceiptFile(file);
