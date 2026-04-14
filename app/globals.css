@@ -4,8 +4,26 @@
 
 :root {
   color-scheme: light;
+  --bg: #fafaf8;
+  --surface: #ffffff;
+  --border: #e8e6df;
+  --text: #141412;
+  --muted: #7a7872;
+  --faint: #c8c6bf;
+  --accent: #2d5be3;
+  --accent-bg: #eef2fd;
+  --accent-dark: #1e3fa8;
+  --green: #16a34a;
+  --green-bg: #dcfce7;
+  --amber: #d97706;
+  --amber-bg: #fef3c7;
+  --mono: 'DM Mono', monospace;
+  --r: 14px;
+  --r-sm: 8px;
 }
 
 body {
-  @apply bg-slate-50 text-slate-900;
+  font-family: var(--font-dm-sans), 'DM Sans', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
 }
