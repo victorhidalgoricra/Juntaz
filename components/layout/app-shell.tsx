@@ -36,6 +36,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen md:grid md:grid-cols-[240px_1fr]">
       <aside className="border-b bg-white p-4 md:min-h-screen md:border-r md:border-b-0">
         <p className="mb-4 text-lg font-semibold text-primary">Juntas Digitales</p>
+        {process.env.NODE_ENV === 'development' && (
+          <p className="mb-2 text-xs text-slate-500">Rol sesión: {user?.global_role ?? 'user'}</p>
+        )}
         <nav className="flex gap-2 overflow-auto md:flex-col">
           {links.map((link) => (
             <Link
