@@ -24,5 +24,5 @@ export async function resolveGlobalRole(email: string): Promise<GlobalRole> {
 }
 
 export function isBackofficeAdmin(user: Pick<Profile, 'global_role'> | null | undefined) {
-  return user?.global_role === 'admin' || user?.global_role === 'backoffice_admin';
+  return user?.global_role === 'backoffice_admin';
 }
