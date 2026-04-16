@@ -329,11 +329,12 @@ export async function fetchAdminJuntas(params?: { includeBlocked?: boolean }) {
   if (error) return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };
 
   const normalized = ((data ?? []) as Partial<AdminJuntaListItem>[]).map((row) => {
-    const bloqueada = Boolean(row.bloqueada);
+    const estadoVisualRaw = String(row.estado_visual ?? '').toLowerCase();
+    const bloqueada = Boolean(row.bloqueada) || estadoVisualRaw === 'bloqueada';
     return {
       ...row,
       bloqueada,
-      estado_visual: bloqueada ? 'bloqueada' : row.estado
+      estado_visual: bloqueada ? 'Bloqueada' : row.estado
     } as AdminJuntaListItem;
   });
 

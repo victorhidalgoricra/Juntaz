@@ -27,11 +27,11 @@ export default function AdminJuntasPage() {
   const [blockedOverrides, setBlockedOverrides] = useState<Set<string>>(new Set());
 
   const isRowBlocked = useCallback((row: AdminJuntaListItem) => (
-    Boolean(row.bloqueada) || blockedOverrides.has(row.id)
+    Boolean(row.bloqueada) || String(row.estado_visual ?? '').toLowerCase() === 'bloqueada' || blockedOverrides.has(row.id)
   ), [blockedOverrides]);
 
   const getEstadoVisual = useCallback((row: AdminJuntaListItem) => (
-    isRowBlocked(row) ? 'bloqueada' : (row.estado_visual ?? row.estado)
+    isRowBlocked(row) ? 'Bloqueada' : (row.estado_visual ?? row.estado)
   ), [isRowBlocked]);
 
   const loadRows = useCallback(async (includeBlocked: boolean) => {
@@ -143,9 +143,9 @@ export default function AdminJuntasPage() {
             </thead>
             <tbody>
               {filteredRows.map((row) => (
-                <tr key={row.id} className={`border-t align-top ${isRowBlocked(row) ? 'bg-slate-50 text-slate-500' : ''}`}>
+                <tr key={row.id} className={`border-t align-top ${isRowBlocked(row) ? 'bg-slate-50 text-slate-500 opacity-85' : ''}`}>
                   <td className="px-3 py-2">
-                    <p className="font-medium text-slate-900">{row.nombre}</p>
+                    <p className={`font-medium ${isRowBlocked(row) ? 'text-slate-500' : 'text-slate-900'}`}>{row.nombre}</p>
                     <p className="text-xs text-slate-500">slug: {row.slug}</p>
                   </td>
                   <td className="px-3 py-2">
@@ -164,11 +164,9 @@ export default function AdminJuntasPage() {
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-2">
                       <Link href={`/admin/juntas/${row.id}`}><Button variant="outline">Ver detalle</Button></Link>
-                      {!isRowBlocked(row) && (
-                        <Button variant="destructive" onClick={() => setCandidate(row)}>
-                          Eliminar
-                        </Button>
-                      )}
+                      <Button variant="destructive" disabled={isRowBlocked(row)} onClick={() => setCandidate(row)}>
+                        {isRowBlocked(row) ? 'Eliminada' : 'Eliminar'}
+                      </Button>
                     </div>
                   </td>
                 </tr>
