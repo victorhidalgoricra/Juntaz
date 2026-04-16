@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import { isJuntaActive } from '@/lib/junta-status';
 import {
   activateJuntaIfReady,
   deleteDraftJunta,
-  fetchAvailableJuntas,
+  fetchPublicJuntas,
   findJuntaByAccessCode,
   joinJuntaAsParticipant,
   leaveJuntaAsParticipant
@@ -50,29 +50,26 @@ export default function JuntasDisponiblesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterId>('todas');
 
-  useEffect(() => {
-    const load = async () => {
-      if (!user) return;
-      setLoading(true);
-      setError(null);
+  const reloadCatalog = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    setError(null);
 
-      const result = await fetchAvailableJuntas(user.id);
-      if (!result.ok) {
-        console.error('[Juntas disponibles] error loading catalog', result.message);
-        setError('No pudimos cargar las juntas disponibles. Intenta nuevamente.');
-        setLoading(false);
-        return;
-      }
-
-      if (result.data.length > 0) {
-        setData({ juntas: result.data });
-      }
-
+    const result = await fetchPublicJuntas();
+    if (!result.ok) {
+      console.error('[Juntas disponibles] error loading catalog', result.message);
+      setError('No pudimos cargar las juntas disponibles. Intenta nuevamente.');
       setLoading(false);
-    };
+      return;
+    }
 
-    load();
+    setData({ juntas: result.data });
+    setLoading(false);
   }, [user, setData]);
+
+  useEffect(() => {
+    reloadCatalog();
+  }, [reloadCatalog]);
 
   const countByJunta = useMemo(
     () => new Map(allJuntas.map((junta) => [junta.id, Number(junta.integrantes_actuales ?? 0)])),
@@ -279,11 +276,9 @@ export default function JuntasDisponiblesPage() {
     }
 
     try {
-      setData({
-        juntas: allJuntas.filter((item) => item.id !== juntaId),
-        members: allMembers.filter((member) => member.junta_id !== juntaId)
-      });
+      setData({ members: allMembers.filter((member) => member.junta_id !== juntaId) });
       setDeletingId(null);
+      await reloadCatalog();
       alert('Junta eliminada correctamente.');
 
       if (process.env.NODE_ENV === 'development') {
