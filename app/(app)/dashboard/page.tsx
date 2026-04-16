@@ -7,6 +7,7 @@ import { es } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { getJuntaEngagementLayer, type JuntaMission, type LevelUnlocks } from '@/services/junta-engagement.service';
 import {
   buildJuntaScoreStatsFromDomain,
   getScoreBadge,
@@ -58,9 +59,11 @@ type NextLevelData = {
   benefitText: string;
   currentScore: number;
   targetScore: number;
-  missionText: string;
-  missionCurrent: number;
-  missionTarget: number;
+  mission: JuntaMission;
+  warning: string | null;
+  unlocks: LevelUnlocks | null;
+  gainText: string;
+  lossText: string;
 };
 
 function money(value: number) {
@@ -220,16 +223,21 @@ function getJuntaHistory(params: { juntas: Junta[]; myJuntaIds: string[] }): Jun
     }));
 }
 
-function getNextLevelProgress(score: UserJuntaScoreResult): NextLevelData {
-  const nextLevel = score.nextLevel ?? 'Élite';
+function getNextLevelProgress(score: UserJuntaScoreResult, engagement: ReturnType<typeof getJuntaEngagementLayer>): NextLevelData {
+  const nextLevel = engagement.nextLevel ?? 'Élite';
+  const unlockCopy = engagement.nextLevelUnlocks
+    ? `Límite ${engagement.nextLevelUnlocks.maxJuntaMembers} miembros · aporte hasta S/ ${engagement.nextLevelUnlocks.maxContributionPerRound.toLocaleString('es-PE')}.`
+    : 'Ya tienes el nivel máximo desbloqueado.';
   return {
     title: `Próximo nivel: ${nextLevel}`,
-    benefitText: `+${score.pointsToNextLevel} pts para desbloquear beneficios adicionales para tu grupo.`,
+    benefitText: `+${engagement.pointsRemainingToNextLevel} pts para desbloquear: ${unlockCopy}`,
     currentScore: score.score,
     targetScore: score.nextLevel ? score.score + score.pointsToNextLevel : 100,
-    missionText: score.reasons[0] ?? 'Mantén tus pagos al día para seguir subiendo.',
-    missionCurrent: Math.max(0, 2 - Math.min(2, score.warnings.length)),
-    missionTarget: 2
+    mission: engagement.featuredMission,
+    warning: engagement.levelDropWarning,
+    unlocks: engagement.nextLevelUnlocks,
+    gainText: engagement.causeAndEffect.gainIfPayToday,
+    lossText: engagement.causeAndEffect.lossIfLateToday
   };
 }
 
@@ -397,7 +405,7 @@ function ActiveJuntasSection({ active, history }: { active: JuntaCardData[]; his
 
 function NextLevelSection({ data }: { data: NextLevelData }) {
   const progressPct = Math.round((data.currentScore / data.targetScore) * 100);
-  const missionPct = Math.round((data.missionCurrent / data.missionTarget) * 100);
+  const missionPct = Math.round((data.mission.progressCurrent / data.mission.progressTarget) * 100);
 
   return (
     <section className="space-y-3">
@@ -418,13 +426,23 @@ function NextLevelSection({ data }: { data: NextLevelData }) {
       </Card>
 
       <Card className="p-4">
-        <p className="text-sm text-slate-700">{data.missionText}</p>
+        <p className="text-sm font-semibold text-slate-900">{data.mission.title}</p>
+        <p className="mt-1 text-sm text-slate-700">{data.mission.description}</p>
+        <p className="mt-1 text-xs text-emerald-700">Recompensa: +{data.mission.rewardPoints} pts</p>
         <div className="mt-3 flex items-center gap-3">
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
             <div className="h-full rounded-full bg-slate-500" style={{ width: `${missionPct}%` }} />
           </div>
-          <p className="text-xs text-slate-500">{data.missionCurrent}/{data.missionTarget}</p>
+          <p className="text-xs text-slate-500">{data.mission.progressCurrent}/{data.mission.progressTarget}</p>
         </div>
+        <p className="mt-3 text-xs text-blue-700">{data.gainText}</p>
+        <p className="mt-1 text-xs text-amber-700">{data.lossText}</p>
+        {data.warning && <p className="mt-2 text-xs font-medium text-rose-700">{data.warning}</p>}
+        {data.unlocks && (
+          <p className="mt-2 text-xs text-slate-600">
+            Próximos desbloqueos: {data.unlocks.maxJuntaMembers} integrantes · aporte hasta S/ {data.unlocks.maxContributionPerRound.toLocaleString('es-PE')} · {data.unlocks.incentiveJuntasEnabled ? 'juntas con incentivo' : 'sin juntas con incentivo'}.
+          </p>
+        )}
       </Card>
     </section>
   );
@@ -460,6 +478,11 @@ export default function DashboardPage() {
   });
 
   const score = getUserJuntaScore(user.id, scoreStats);
+  const engagement = getJuntaEngagementLayer({
+    userId: user.id,
+    score,
+    stats: scoreStats
+  });
 
   const upcomingPayout = getUpcomingPayout({
     userId: user.id,
@@ -492,7 +515,7 @@ export default function DashboardPage() {
   const lateCount = scoreStats.latePaymentsRecent + scoreStats.defaultPaymentsRecent;
   const paymentRate = approvedCount + lateCount > 0 ? Math.round((approvedCount / (approvedCount + lateCount)) * 100) : 0;
   const completedCycles = safeJuntas.filter((junta) => myJuntaIds.includes(junta.id) && junta.estado === 'cerrada').length;
-  const nextLevel = getNextLevelProgress(score);
+  const nextLevel = getNextLevelProgress(score, engagement);
 
   return (
     <div className="space-y-5">
@@ -502,7 +525,7 @@ export default function DashboardPage() {
 
       <JuntaScoreCard score={score} />
 
-      <DashboardKpis paymentsOnTime={paymentRate} completedCycles={completedCycles} referredActive={0} />
+      <DashboardKpis paymentsOnTime={paymentRate} completedCycles={completedCycles} referredActive={scoreStats.successfulReferrals} />
 
       {upcomingPayout && <UpcomingPayoutCard data={upcomingPayout} />}
 

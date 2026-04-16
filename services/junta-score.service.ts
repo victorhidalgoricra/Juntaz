@@ -3,6 +3,8 @@ import { Junta, JuntaMember, Payment, PaymentSchedule } from '@/types/domain';
 export type JuntaScoreLevel = 'Nuevo' | 'Bronce' | 'Plata' | 'Oro' | 'Élite';
 
 export type JuntaScoreStats = {
+  onTimePaymentsThisWeek: number;
+  latePaymentsThisWeek: number;
   onTimePaymentsRecent: number;
   latePaymentsRecent: number;
   defaultPaymentsRecent: number;
@@ -54,11 +56,11 @@ export const JUNTA_SCORE_CONFIG: ScoreConfig = {
     healthyBehavior: 5
   },
   levels: [
-    { level: 'Nuevo', min: 0, max: 39, badge: '🟢 Nuevo' },
-    { level: 'Bronce', min: 40, max: 59, badge: '🥉 Bronce' },
-    { level: 'Plata', min: 60, max: 74, badge: '🥈 Plata' },
-    { level: 'Oro', min: 75, max: 89, badge: '🥇 Oro' },
-    { level: 'Élite', min: 90, max: 100, badge: '💎 Élite' }
+    { level: 'Nuevo', min: 0, max: 29, badge: '🟢 Nuevo' },
+    { level: 'Bronce', min: 30, max: 49, badge: '🥉 Bronce' },
+    { level: 'Plata', min: 50, max: 69, badge: '🥈 Plata' },
+    { level: 'Oro', min: 70, max: 84, badge: '🥇 Oro' },
+    { level: 'Élite', min: 85, max: 100, badge: '💎 Élite' }
   ],
   caps: {
     referrals: 4,
@@ -242,6 +244,8 @@ export function buildJuntaScoreStatsFromDomain(params: {
   const now = params.now ?? new Date();
   const recentFrom = new Date(now);
   recentFrom.setDate(recentFrom.getDate() - JUNTA_SCORE_CONFIG.windows.recentDays);
+  const weekFrom = new Date(now);
+  weekFrom.setDate(weekFrom.getDate() - 7);
 
   const myJuntaIds = new Set([
     ...params.juntas.filter((junta) => junta.admin_id === params.userId).map((junta) => junta.id),
@@ -255,6 +259,8 @@ export function buildJuntaScoreStatsFromDomain(params: {
   let onTimePaymentsRecent = 0;
   let latePaymentsRecent = 0;
   let defaultPaymentsRecent = 0;
+  let onTimePaymentsThisWeek = 0;
+  let latePaymentsThisWeek = 0;
   let onTimePaymentsLifetime = 0;
   let latePaymentsLifetime = 0;
   let defaultPaymentsLifetime = 0;
@@ -264,6 +270,7 @@ export function buildJuntaScoreStatsFromDomain(params: {
     const key = `${schedule.junta_id}-${schedule.id}`;
     const payment = paymentBySchedule.get(key);
     const isRecent = dueDate >= recentFrom;
+    const isThisWeek = dueDate >= weekFrom;
 
     const paidAt = payment?.validated_at ?? payment?.submitted_at ?? payment?.pagado_en;
     const paidDate = paidAt ? new Date(paidAt) : null;
@@ -273,9 +280,11 @@ export function buildJuntaScoreStatsFromDomain(params: {
       if (isLate) {
         latePaymentsLifetime += 1;
         if (isRecent) latePaymentsRecent += 1;
+        if (isThisWeek) latePaymentsThisWeek += 1;
       } else {
         onTimePaymentsLifetime += 1;
         if (isRecent) onTimePaymentsRecent += 1;
+        if (isThisWeek) onTimePaymentsThisWeek += 1;
       }
       return;
     }
@@ -284,6 +293,7 @@ export function buildJuntaScoreStatsFromDomain(params: {
     if (isDefault) {
       defaultPaymentsLifetime += 1;
       if (isRecent) defaultPaymentsRecent += 1;
+      if (isThisWeek) latePaymentsThisWeek += 1;
     }
   });
 
@@ -315,6 +325,8 @@ export function buildJuntaScoreStatsFromDomain(params: {
   }).length;
 
   return {
+    onTimePaymentsThisWeek,
+    latePaymentsThisWeek,
     onTimePaymentsRecent,
     latePaymentsRecent,
     defaultPaymentsRecent,
