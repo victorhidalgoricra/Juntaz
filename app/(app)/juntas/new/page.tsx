@@ -15,6 +15,10 @@ import { generarCronograma } from '@/services/schedule.service';
 import { makeSlug } from '@/lib/slug';
 import { generateAccessCode } from '@/lib/access-code';
 import { createJuntaRecord } from '@/services/juntas.repository';
+import {
+  generateTurnIncentives,
+  getIncentivePreviewRows
+} from '@/services/incentive.service';
 
 const steps = [
   { id: 1, title: 'Información básica' },
@@ -43,6 +47,7 @@ export default function NewJuntaPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successState, setSuccessState] = useState<SuccessState | null>(null);
+  const [firstHalfIncentives, setFirstHalfIncentives] = useState<number[]>([]);
 
   const { register, control, handleSubmit, setError, clearErrors, formState, getValues, trigger, setValue } = useForm<CreateJuntaValues>({
     defaultValues: {
@@ -52,8 +57,6 @@ export default function NewJuntaPage() {
       monto_cuota: 20,
       tipo_junta: 'normal',
       turn_assignment_mode: 'random',
-      incentivo_porcentaje: 0,
-      incentivo_regla: 'primero_ultimo',
       frecuencia_pago: 'semanal',
       fecha_inicio: '',
       visibilidad: 'privada'
@@ -63,13 +66,26 @@ export default function NewJuntaPage() {
   const form = useWatch({ control });
   const nombreLength = (form.nombre ?? '').length;
 
-  const incentivoMonto = useMemo(() => {
-    if (form.tipo_junta !== 'incentivo') return 0;
-    return Math.round((Number(form.monto_cuota ?? 0) * Number(form.incentivo_porcentaje ?? 0)) / 100);
-  }, [form.monto_cuota, form.incentivo_porcentaje, form.tipo_junta]);
-
   const previewParticipantes = Number(form.participantes_max ?? 0);
   const previewCuota = Number(form.monto_cuota ?? 0);
+  const firstHalfCount = Math.floor(Math.max(previewParticipantes, 0) / 2);
+
+  useEffect(() => {
+    setFirstHalfIncentives((previous) => {
+      const next = Array.from({ length: firstHalfCount }, (_, index) => {
+        const previousValue = previous[index];
+        if (Number.isInteger(previousValue) && previousValue >= 1 && previousValue <= 20) return previousValue;
+        return 5;
+      });
+      return next;
+    });
+  }, [firstHalfCount]);
+
+  const incentivePreviewRows = useMemo(() => getIncentivePreviewRows({
+    totalParticipants: Math.max(previewParticipantes, 1),
+    baseContribution: previewCuota,
+    firstHalfPercentages: firstHalfIncentives
+  }), [previewCuota, previewParticipantes, firstHalfIncentives]);
   const hasMeaningfulInput = useMemo(() => {
     const hasNombre = (form.nombre ?? '').trim().length > 0;
     const hasDescripcion = (form.descripcion ?? '').trim().length > 0;
@@ -128,7 +144,15 @@ export default function NewJuntaPage() {
         return false;
       }
 
-      clearErrors(['fecha_inicio']);
+      if (values.tipo_junta === 'incentivo') {
+        const hasInvalid = firstHalfIncentives.some((value) => !Number.isInteger(value) || value < 1 || value > 20);
+        if (hasInvalid || firstHalfIncentives.length !== Math.floor(values.participantes_max / 2)) {
+          setError('incentivo_porcentaje', { message: 'Ingresa porcentajes enteros entre 1% y 20% para todos los turnos iniciales.' });
+          return false;
+        }
+      }
+
+      clearErrors(['fecha_inicio', 'incentivo_porcentaje']);
       return true;
     }
 
@@ -235,6 +259,7 @@ export default function NewJuntaPage() {
                 const slug = `${makeSlug(values.nombre)}-${juntaId.slice(0, 6)}`;
                 const bolsaBase = values.participantes_max * values.monto_cuota;
                 const accessCode = values.visibilidad === 'privada' ? generateAccessCode('PRIV') : undefined;
+                const incentivoTurnos = values.tipo_junta === 'incentivo' ? [...firstHalfIncentives] : [];
                 const created = {
                   id: juntaId,
                   admin_id: user.id,
@@ -250,8 +275,9 @@ export default function NewJuntaPage() {
                   bolsa_base: bolsaBase,
                   tipo_junta: values.tipo_junta,
                   turn_assignment_mode: values.turn_assignment_mode,
-                  incentivo_porcentaje: values.tipo_junta === 'incentivo' ? Number(values.incentivo_porcentaje ?? 0) : 0,
-                  incentivo_regla: values.tipo_junta === 'incentivo' ? values.incentivo_regla ?? 'primero_ultimo' : 'primero_ultimo',
+                  incentivo_porcentaje: values.tipo_junta === 'incentivo' ? Math.max(...incentivoTurnos, 0) : 0,
+                  incentivo_regla: (values.tipo_junta === 'incentivo' ? 'escalonado' : 'primero_ultimo') as 'escalonado' | 'primero_ultimo',
+                  incentivo_turnos: incentivoTurnos,
                   premio_primero_pct: 0,
                   descuento_ultimo_pct: 0,
                   fee_plataforma_pct: 0,
@@ -424,15 +450,65 @@ export default function NewJuntaPage() {
             {step === 3 && (
               <div className="space-y-3">
                 {form.tipo_junta === 'incentivo' && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Incentivo ({form.incentivo_porcentaje ?? 0}%)</label>
-                    <Input type="range" min={0} max={20} step={1} {...register('incentivo_porcentaje', { valueAsNumber: true })} />
+                  <div className="space-y-3 rounded-md border border-slate-200 p-3">
+                    <p className="text-sm font-medium">Configuración de incentivos por turno</p>
                     <p className="text-xs text-slate-600">
-                      Turno #1 paga S/{Math.max(previewCuota - incentivoMonto, 0)} (+S/{incentivoMonto}) · Turno #{Math.max(previewParticipantes, 1)} paga S/{previewCuota + incentivoMonto} (-S/{incentivoMonto})
+                      Los primeros turnos pagan más por recibir antes. Los últimos turnos pagan menos por esperar más. El total se compensa automáticamente.
                     </p>
-                    {Number(form.incentivo_porcentaje ?? 0) === 0 && (
-                      <p className="text-xs text-amber-700">Incentivo en 0%: permitido, pero no genera redistribución.</p>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {Array.from({ length: firstHalfCount }).map((_, index) => (
+                        <div key={`incentivo-input-${index}`} className="space-y-1">
+                          <label className="text-xs font-medium text-slate-700">Turno #{index + 1} (+%)</label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={20}
+                            step={1}
+                            value={firstHalfIncentives[index] ?? ''}
+                            onChange={(event) => {
+                              const raw = Number(event.target.value);
+                              setFirstHalfIncentives((previous) =>
+                                previous.map((value, currentIndex) => (currentIndex === index ? (Number.isNaN(raw) ? 0 : Math.trunc(raw)) : value))
+                              );
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    {formState.errors.incentivo_porcentaje && (
+                      <p className="text-xs text-red-600">{formState.errors.incentivo_porcentaje.message}</p>
                     )}
+
+                    <div className="space-y-1 rounded-md bg-slate-50 p-3 text-xs text-slate-700">
+                      <p className="font-medium">Ajustes automáticos</p>
+                      {generateTurnIncentives(Math.max(previewParticipantes, 1), firstHalfIncentives).map((percent, index) => (
+                        <p key={`incentivo-auto-${index}`}>
+                          Turno #{index + 1}: {percent > 0 ? `+${percent}%` : percent < 0 ? `${percent}%` : 'Sin incentivo'}
+                        </p>
+                      ))}
+                    </div>
+
+                    <div className="overflow-hidden rounded-md border border-slate-200">
+                      <table className="w-full text-xs">
+                        <thead className="bg-slate-50 text-slate-700">
+                          <tr>
+                            <th className="px-2 py-2 text-left font-medium">Turno</th>
+                            <th className="px-2 py-2 text-left font-medium">% ajuste</th>
+                            <th className="px-2 py-2 text-left font-medium">Cuota final a pagar</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {incentivePreviewRows.map((row) => (
+                            <tr key={`preview-row-${row.turno}`} className="border-t">
+                              <td className="px-2 py-2">#{row.turno}</td>
+                              <td className="px-2 py-2">{row.ajustePorcentaje > 0 ? `+${row.ajustePorcentaje}%` : row.ajustePorcentaje < 0 ? `${row.ajustePorcentaje}%` : 'Sin incentivo'}</td>
+                              <td className="px-2 py-2">S/ {row.cuotaFinal.toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
 
@@ -454,7 +530,7 @@ export default function NewJuntaPage() {
                   <p><span className="font-medium">Frecuencia:</span> {form.frecuencia_pago}</p>
                   <p><span className="font-medium">Tipo:</span> {form.tipo_junta}</p>
                   <p><span className="font-medium">Asignación de turnos:</span> {form.turn_assignment_mode === 'manual' ? 'Manual' : 'Al azar'}</p>
-                  <p><span className="font-medium">Incentivo:</span> {form.tipo_junta === 'incentivo' ? `${form.incentivo_porcentaje}%` : 'No aplica'}</p>
+                  <p><span className="font-medium">Incentivo:</span> {form.tipo_junta === 'incentivo' ? 'Escalonado por turnos' : 'No aplica'}</p>
                   <p><span className="font-medium">Fecha inicio:</span> {form.fecha_inicio || '—'}</p>
                 </div>
                 <div className="rounded-md bg-slate-100 p-3 text-xs text-slate-700">
@@ -506,20 +582,11 @@ export default function NewJuntaPage() {
 
           <div className="space-y-1 text-xs [font-family:'DM_Mono',monospace]">
             <p className="uppercase tracking-wide text-slate-400">Turnos simulados</p>
-            {Array.from({ length: Math.min(previewParticipantes, 5) }).map((_, idx) => {
-              const turno = idx + 1;
-              const isFirst = turno === 1;
-              const isLast = turno === previewParticipantes;
-              const appliedAdjustment = form.tipo_junta === 'incentivo' && (isFirst || isLast);
-              const turnoMonto = appliedAdjustment ? (isFirst ? Math.max(previewCuota - incentivoMonto, 0) : previewCuota + incentivoMonto) : previewCuota;
-
-              return (
-                <p key={turno}>
-                  Turno #{turno}: S/{turnoMonto.toFixed(2)}
-                  {appliedAdjustment ? isFirst ? ` (+S/${incentivoMonto})` : ` (-S/${incentivoMonto})` : ''}
-                </p>
-              );
-            })}
+            {incentivePreviewRows.slice(0, 5).map((row) => (
+              <p key={row.turno}>
+                Turno #{row.turno}: S/{row.cuotaFinal.toFixed(2)} ({row.ajustePorcentaje > 0 ? `+${row.ajustePorcentaje}%` : `${row.ajustePorcentaje}%`})
+              </p>
+            ))}
           </div>
         </Card>
       )}

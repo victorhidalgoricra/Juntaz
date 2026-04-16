@@ -79,7 +79,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
       frecuencia: junta.frecuencia_pago,
       tipoJunta: junta.tipo_junta ?? 'normal',
       incentivoPorcentaje: junta.incentivo_porcentaje ?? 0,
-      incentivoRegla: junta.incentivo_regla ?? 'primero_ultimo'
+      incentivoPorTurno: junta.incentivo_turnos
     });
   }, [junta]);
 
@@ -235,7 +235,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
             <div className="grid gap-3 md:grid-cols-4">
               <Card><p className="text-xs text-slate-500">Bolsa semanal</p><p className="text-3xl font-semibold">S/{bolsaSemanal.toFixed(0)}</p></Card>
               <Card><p className="text-xs text-slate-500">Cuota base</p><p className="text-3xl font-semibold">S/{(junta.cuota_base ?? junta.monto_cuota).toFixed(0)}</p></Card>
-              <Card><p className="text-xs text-slate-500">Incentivo turno</p><p className="text-3xl font-semibold">{junta.tipo_junta === 'incentivo' ? `±${Number(junta.incentivo_porcentaje ?? 0).toFixed(0)}%` : 'Sin incentivo'}</p><p className="text-xs text-slate-500">{junta.tipo_junta === 'incentivo' ? incentivoLabel : 'No aplica para esta junta'}</p></Card>
+              <Card><p className="text-xs text-slate-500">Incentivo turno</p><p className="text-3xl font-semibold">{junta.tipo_junta === 'incentivo' ? 'Escalonado' : 'Sin incentivo'}</p><p className="text-xs text-slate-500">{junta.tipo_junta === 'incentivo' ? incentivoLabel : 'No aplica para esta junta'}</p></Card>
               <Card><p className="text-xs text-slate-500">Integrantes</p><p className="text-3xl font-semibold">{miembrosActuales}/{junta.participantes_max}</p><p className="text-xs text-slate-500">{faltantes > 0 ? `Faltan ${faltantes}` : 'Grupo completo'}</p></Card>
             </div>
           </Card>
@@ -303,7 +303,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
           <Card className="border-0 bg-indigo-50 text-center">
             <p className="text-6xl font-bold text-indigo-700">#{myTurn ?? '-'}</p>
             <p className="text-2xl text-indigo-700">{myTurn === currentWeek ? `Tu turno · Semana ${currentWeek}` : `Tu turno será en semana ${myTurn ?? '-'}`}</p>
-            <p className="text-xl text-indigo-700">Recibirás S/{(myTurnRow?.montoRecibido ?? simulacion.bolsaBase).toFixed(0)} · Aporte esta semana S/{(junta.cuota_base ?? junta.monto_cuota).toFixed(0)}</p>
+            <p className="text-xl text-indigo-700">Recibirás S/{(myTurnRow?.montoRecibido ?? simulacion.bolsaBase).toFixed(0)} · Aporte esta semana S/{(simulacion.rows.find((row) => row.turno === currentWeek)?.cuotaPorRonda ?? (junta.cuota_base ?? junta.monto_cuota)).toFixed(0)}</p>
           </Card>
 
           <Card>

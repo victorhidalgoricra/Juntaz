@@ -1,5 +1,5 @@
 import { addDays, addMonths, format } from 'date-fns';
-import { Frecuencia, IncentivoRegla, TipoJunta } from '@/types/domain';
+import { Frecuencia, TipoJunta } from '@/types/domain';
 
 type SimParams = {
   participantes: number;
@@ -8,7 +8,7 @@ type SimParams = {
   fechaInicio: string;
   tipoJunta: TipoJunta;
   incentivoPorcentaje?: number;
-  incentivoRegla?: IncentivoRegla;
+  incentivoPorTurno?: number[];
 };
 
 export type SimRow = {
@@ -22,24 +22,72 @@ export type SimRow = {
   perfil: string;
 };
 
+export type IncentivePreviewRow = {
+  turno: number;
+  ajustePorcentaje: number;
+  cuotaFinal: number;
+};
+
 const round2 = (value: number) => Math.round(value * 100) / 100;
+
+export function generateTurnIncentives(totalParticipants: number, firstHalfPercentages: number[]) {
+  const n = Math.max(1, Math.floor(totalParticipants));
+  const half = Math.floor(n / 2);
+  const positives = Array.from({ length: half }, (_, index) => Math.max(0, Number(firstHalfPercentages[index] ?? 0)));
+
+  return Array.from({ length: n }, (_, index) => {
+    if (index < half) return positives[index];
+    if (n % 2 === 1 && index === half) return 0;
+
+    const mirrorIndex = n - 1 - index;
+    return -positives[mirrorIndex];
+  });
+}
+
+export function calculateContributionByTurn(baseContribution: number, incentives: number[]) {
+  const base = round2(Math.max(0, Number(baseContribution) || 0));
+  return incentives.map((percent) => round2(base * (1 + percent / 100)));
+}
+
+export function getIncentivePreviewRows(params: {
+  totalParticipants: number;
+  baseContribution: number;
+  firstHalfPercentages: number[];
+}): IncentivePreviewRow[] {
+  const incentives = generateTurnIncentives(params.totalParticipants, params.firstHalfPercentages);
+  const contributions = calculateContributionByTurn(params.baseContribution, incentives);
+
+  return incentives.map((incentive, index) => ({
+    turno: index + 1,
+    ajustePorcentaje: incentive,
+    cuotaFinal: contributions[index]
+  }));
+}
+
+function getTurnProfile(turn: number, totalTurns: number) {
+  if (turn === 1) return 'Liquidez inmediata';
+  if (turn <= Math.floor(totalTurns / 2)) return 'Recibe temprano';
+  if (totalTurns % 2 === 1 && turn === Math.ceil(totalTurns / 2)) return 'Punto medio';
+  if (turn === totalTurns) return 'Prefiere mayor espera';
+  return 'Espera moderada';
+}
 
 export function calcularSimulacionJunta(params: SimParams) {
   const n = Math.max(2, Number(params.participantes) || 2);
   const cuotaBase = round2(Math.max(0, Number(params.cuotaBase) || 0));
   const bolsaBase = round2(n * cuotaBase);
-  const incentivoPorcentaje = params.tipoJunta === 'incentivo' ? round2(Math.max(0, Number(params.incentivoPorcentaje) || 0)) : 0;
-  const porcentajeDecimal = incentivoPorcentaje / 100;
-  const ajusteTotal = round2(bolsaBase * porcentajeDecimal);
-  const ajusteCuotaPorRonda = round2(ajusteTotal / n);
+  const fallbackIncentive = round2(Math.max(0, Number(params.incentivoPorcentaje) || 0));
+  const firstHalfFallback = Array.from({ length: Math.floor(n / 2) }, () => fallbackIncentive);
 
+  const turnIncentives = params.tipoJunta === 'incentivo'
+    ? generateTurnIncentives(n, params.incentivoPorTurno?.length ? params.incentivoPorTurno : firstHalfFallback)
+    : Array.from({ length: n }, () => 0);
+
+  const contributions = calculateContributionByTurn(cuotaBase, turnIncentives);
   const start = new Date(params.fechaInicio);
 
   const rows: SimRow[] = Array.from({ length: n }).map((_, index) => {
     const turno = index + 1;
-    const isPrimero = turno === 1;
-    const isUltimo = turno === n;
-
     const date =
       params.frecuencia === 'semanal'
         ? addDays(start, index * 7)
@@ -47,21 +95,11 @@ export function calcularSimulacionJunta(params: SimParams) {
           ? addDays(start, index * 14)
           : addMonths(start, index);
 
-    let ajuste = 0;
-    if (params.tipoJunta === 'incentivo' && (params.incentivoRegla ?? 'primero_ultimo') === 'primero_ultimo') {
-      if (isPrimero) ajuste = -ajusteTotal;
-      if (isUltimo) ajuste = ajusteTotal;
-    }
-
-    const cuotaPorRonda =
-      params.tipoJunta === 'incentivo'
-        ? round2(cuotaBase + (isPrimero ? ajusteCuotaPorRonda : isUltimo ? -ajusteCuotaPorRonda : 0))
-        : cuotaBase;
-
-    const montoRecibido = round2(bolsaBase + ajuste);
+    const cuotaPorRonda = contributions[index] ?? cuotaBase;
+    const ajuste = round2(cuotaPorRonda - cuotaBase);
+    const montoRecibido = bolsaBase;
     const totalAportadoCiclo = round2(cuotaPorRonda * n);
     const neto = round2(montoRecibido - totalAportadoCiclo);
-    const perfil = isPrimero ? 'Liquidez inmediata' : isUltimo ? 'Prefiere mayor beneficio final' : 'Balance intermedio';
 
     return {
       turno,
@@ -71,22 +109,24 @@ export function calcularSimulacionJunta(params: SimParams) {
       montoRecibido,
       ajuste,
       neto,
-      perfil
+      perfil: getTurnProfile(turno, n)
     };
   });
 
   const totalAportes = round2(rows.reduce((acc, row) => acc + row.totalAportadoCiclo, 0));
   const totalRecibido = round2(rows.reduce((acc, row) => acc + row.montoRecibido, 0));
   const balance = round2(totalRecibido - totalAportes);
+  const ajusteTotal = round2(rows.reduce((acc, row) => acc + row.ajuste, 0));
 
   return {
     rows,
     bolsaBase,
     ajusteTotal,
-    incentivoPorcentaje,
+    incentivoPorcentaje: fallbackIncentive,
     cuotaBase,
     totalAportes,
     totalRecibido,
-    balance
+    balance,
+    incentivosPorTurno: turnIncentives
   };
 }
