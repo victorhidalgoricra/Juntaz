@@ -83,45 +83,42 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
       setAccessState('checking');
 
       try {
-        let resolvedJunta = juntas.find((j) => j.id === params.id) ?? null;
+        const storedJunta = juntas.find((j) => j.id === params.id) ?? null;
+        const [detailResult, membersResult] = await Promise.all([
+          storedJunta ? Promise.resolve({ ok: true as const, data: storedJunta }) : fetchJuntaById(params.id),
+          fetchMembersByJuntaIds([params.id])
+        ]);
+
+        let resolvedJunta = detailResult.ok ? detailResult.data : null;
+        const activeMembers = membersResult.ok ? membersResult.data.filter((member) => member.estado === 'activo') : [];
+        if (membersResult.ok) setData({ members: membersResult.data });
 
         if (!resolvedJunta) {
-          const detailResult = await fetchJuntaById(params.id);
-          if (detailResult.ok && detailResult.data) {
-            resolvedJunta = detailResult.data;
-          } else {
-            const catalogResult = await fetchAvailableJuntas(user.id);
-            if (catalogResult.ok) {
-              resolvedJunta = catalogResult.data.find((item) => item.id === params.id) ?? null;
-            }
+          // Fallback only when direct detail fetch fails; keep it as last attempt to avoid heavy catalog queries on happy path.
+          const catalogResult = await fetchAvailableJuntas(user.id);
+          if (catalogResult.ok) {
+            resolvedJunta = catalogResult.data.find((item) => item.id === params.id) ?? null;
           }
         }
 
         if (!resolvedJunta) {
           setAccessState('not_found');
-          setLoadingJunta(false);
           return;
         }
 
         setJunta(resolvedJunta);
         setData({ juntas: [resolvedJunta, ...juntas.filter((item) => item.id !== resolvedJunta!.id)] });
 
-        const membersResult = await fetchMembersByJuntaIds([params.id]);
-        const activeMembers = membersResult.ok ? membersResult.data.filter((member) => member.estado === 'activo') : [];
-        if (membersResult.ok) setData({ members: membersResult.data });
-
         const isCreator = resolvedJunta.admin_id === user.id;
         const isActiveMember = activeMembers.some((member) => member.profile_id === user.id);
         const hasAccess = isCreator || isActiveMember;
         if (!hasAccess) {
           setAccessState('unauthorized');
-          setLoadingJunta(false);
           return;
         }
 
         if (resolvedJunta.bloqueada) {
           setAccessState('blocked');
-          setLoadingJunta(false);
           return;
         }
 
@@ -171,11 +168,14 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
   });
   const paidParticipants = getPaidParticipants(summary.rows);
   const pendingPayers = getPendingPayers(summary.rows);
-  const scheduleRows = getTurnSchedule({
-    rows: simulation.rows.map((row) => ({ ...row })),
-    currentWeek,
-    receiverTurn: juntaMembers.find((member) => member.profile_id === user?.id)?.orden_turno ?? null
-  });
+  const needsScheduleRows = (mainView === 'general' && (generalTab === 'cronograma' || generalTab === 'turnos')) || mainView === 'personal';
+  const scheduleRows = needsScheduleRows
+    ? getTurnSchedule({
+      rows: simulation.rows.map((row) => ({ ...row })),
+      currentWeek,
+      receiverTurn: juntaMembers.find((member) => member.profile_id === user?.id)?.orden_turno ?? null
+    })
+    : [];
   const personal = getUserPersonalJuntaView({
     junta,
     currentWeek,
