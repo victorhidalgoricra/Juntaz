@@ -1,7 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { hasSupabase } from '@/lib/env';
 import { Junta, JuntaMember } from '@/types/domain';
-import { ensureProfileExists } from './profile.service';
 
 const PRIVATE_TOKEN_STORAGE_KEY = 'jd-private-invite-tokens';
 
@@ -43,15 +42,6 @@ export async function createJuntaRecord(junta: Junta) {
   if (!hasSupabase || !supabase) {
     return { ok: true as const, source: 'mock' as const };
   }
-
-  const { data: authData } = await supabase.auth.getUser();
-  const adminEmail = authData.user?.email || `${junta.admin_id}@placeholder.local`;
-  const profileResult = await ensureProfileExists({
-    id: junta.admin_id,
-    email: adminEmail,
-    nombre: authData.user?.user_metadata?.full_name || adminEmail.split('@')[0]
-  });
-  if (!profileResult.ok) return { ok: false as const, message: profileResult.message };
 
   const juntaInsertPayload = {
     id: junta.id,
