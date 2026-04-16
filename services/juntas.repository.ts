@@ -306,6 +306,7 @@ export type AdminJuntaListItem = {
   nombre: string;
   slug: string;
   estado: Junta['estado'];
+  estado_visual?: string;
   admin_id: string;
   admin_nombre: string | null;
   admin_email: string | null;
@@ -327,7 +328,16 @@ export async function fetchAdminJuntas(params?: { includeBlocked?: boolean }) {
   });
   if (error) return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };
 
-  return { ok: true as const, data: (data ?? []) as AdminJuntaListItem[] };
+  const normalized = ((data ?? []) as Partial<AdminJuntaListItem>[]).map((row) => {
+    const bloqueada = Boolean(row.bloqueada);
+    return {
+      ...row,
+      bloqueada,
+      estado_visual: bloqueada ? 'bloqueada' : row.estado
+    } as AdminJuntaListItem;
+  });
+
+  return { ok: true as const, data: normalized };
 }
 
 export async function adminSoftDeleteJunta(params: { juntaId: string }) {
