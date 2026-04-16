@@ -16,7 +16,7 @@ export default function AdminJuntasPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [query, setQuery] = useState('');
-  const [estado, setEstado] = useState<'todos' | 'borrador' | 'activa' | 'cerrada' | 'bloqueada'>('todos');
+  const [estado, setEstado] = useState<'todos' | 'borrador' | 'activa' | 'cerrada'>('todos');
   const [visibilidad, setVisibilidad] = useState<'todas' | 'publica' | 'privada'>('todas');
   const [tipo, setTipo] = useState<'todos' | 'normal' | 'incentivo'>('todos');
   const [createdFrom, setCreatedFrom] = useState('');

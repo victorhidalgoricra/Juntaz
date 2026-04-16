@@ -164,7 +164,7 @@ function getActiveJuntas(params: {
 
   return params.juntas
     .filter((junta) => params.myJuntaIds.includes(junta.id))
-    .filter((junta) => junta.estado !== 'cerrada' && junta.estado !== 'bloqueada')
+    .filter((junta) => junta.estado !== 'cerrada' && !junta.bloqueada)
     .map((junta) => {
       const juntaSchedules = params.schedules.filter((schedule) => schedule.junta_id === junta.id);
       const hasPending = juntaSchedules.some((schedule) => schedule.estado === 'vencida' || schedule.estado === 'pendiente');
@@ -189,7 +189,7 @@ function getActiveJuntas(params: {
 function getJuntaHistory(params: { juntas: Junta[]; myJuntaIds: string[] }): JuntaCardData[] {
   return params.juntas
     .filter((junta) => params.myJuntaIds.includes(junta.id))
-    .filter((junta) => junta.estado === 'cerrada' || junta.estado === 'bloqueada')
+    .filter((junta) => junta.estado === 'cerrada' || Boolean(junta.bloqueada))
     .map((junta) => ({
       id: junta.id,
       nombre: junta.nombre,

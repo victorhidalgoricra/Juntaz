@@ -93,7 +93,7 @@ export default function AdminJuntaDetailPage({ params }: { params: { id: string 
         <div className="pt-2">
           <Button
             variant="destructive"
-            disabled={isDeleting || junta.estado === 'bloqueada'}
+            disabled={isDeleting || Boolean(junta.bloqueada)}
             onClick={async () => {
               const warning = junta.estado === 'activa'
                 ? 'Esta junta se encuentra activa. Esta acción administrativa la eliminará del sistema y puede afectar participantes, turnos y trazabilidad. ¿Deseas continuar?'
@@ -108,12 +108,12 @@ export default function AdminJuntaDetailPage({ params }: { params: { id: string 
                 return;
               }
 
-              setJunta((previous) => (previous ? { ...previous, estado: 'bloqueada' } : previous));
+              setJunta((previous) => (previous ? { ...previous, bloqueada: true, cerrar_inscripciones: true } : previous));
               setData({ juntas: [] });
               setIsDeleting(false);
             }}
           >
-            {junta.estado === 'bloqueada' ? 'Junta ya eliminada' : isDeleting ? 'Eliminando...' : 'Eliminar junta'}
+            {junta.bloqueada ? 'Junta ya eliminada' : isDeleting ? 'Eliminando...' : 'Eliminar junta'}
           </Button>
         </div>
       </Card>

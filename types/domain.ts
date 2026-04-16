@@ -1,5 +1,5 @@
 export type Frecuencia = 'semanal' | 'quincenal' | 'mensual';
-export type EstadoJunta = 'borrador' | 'activa' | 'cerrada' | 'bloqueada';
+export type EstadoJunta = 'borrador' | 'activa' | 'cerrada';
 export type TipoJunta = 'normal' | 'incentivo';
 export type IncentivoRegla = 'primero_ultimo' | 'escalonado';
 export type EstadoMiembro = 'invitado' | 'activo' | 'pendiente' | 'moroso' | 'retirado';
@@ -39,6 +39,7 @@ export interface Junta {
   slug: string;
   invite_token: string;
   access_code?: string;
+  bloqueada?: boolean;
   integrantes_actuales?: number;
   is_member_current_user?: boolean;
   tipo_junta?: TipoJunta;

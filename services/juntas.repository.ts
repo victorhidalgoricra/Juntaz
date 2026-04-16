@@ -143,7 +143,6 @@ export async function fetchMyJuntas(adminId: string) {
     .from('juntas')
     .select('*')
     .eq('admin_id', adminId)
-    .neq('estado', 'bloqueada')
     .eq('bloqueada', false)
     .order('created_at', { ascending: false });
   if (error) return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };
@@ -333,7 +332,7 @@ export async function fetchAdminJuntas(params?: { includeBlocked?: boolean }) {
 
 export async function adminSoftDeleteJunta(params: { juntaId: string }) {
   if (!hasSupabase || !supabase) {
-    return { ok: true as const, data: { id: params.juntaId, estado: 'bloqueada' as const } };
+    return { ok: true as const, data: { id: params.juntaId, bloqueada: true } };
   }
 
   const { data, error } = await supabase.schema('public').rpc('admin_soft_delete_junta', { p_junta_id: params.juntaId });
