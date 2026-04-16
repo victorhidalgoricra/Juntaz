@@ -1,12 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import {
+  buildJuntaScoreStatsFromDomain,
+  getScoreBadge,
+  type UserJuntaScoreResult,
+  getUserJuntaScore
+} from '@/services/junta-score.service';
 import { useAppStore } from '@/store/app-store';
 import { useAuthStore } from '@/store/auth-store';
 import { Junta, JuntaMember, Payment, PaymentSchedule, Payout } from '@/types/domain';
@@ -19,15 +25,6 @@ type PendingPaymentBannerData = {
   dueDate: Date;
   isOverdue: boolean;
   hasMultiplePending: boolean;
-};
-
-type JuntaScoreData = {
-  score: number;
-  maxScore: number;
-  scoreLabel: string;
-  pointsToNext: number;
-  nextTier: string;
-  progressPct: number;
 };
 
 type UpcomingPayoutData = {
@@ -117,39 +114,6 @@ function getPendingPaymentBanner(params: {
     dueDate,
     isOverdue: dueDate < today || nextDue.estado === 'vencida',
     hasMultiplePending: dueCandidates.length > 1
-  };
-}
-
-function getUserJuntaScore(params: {
-  userId: string;
-  payments: Payment[];
-  schedules: PaymentSchedule[];
-  myJuntaIds: string[];
-  juntas: Junta[];
-}): JuntaScoreData {
-  const relevantPayments = params.payments.filter((payment) => payment.profile_id === params.userId);
-  const approved = relevantPayments.filter((payment) => payment.estado === 'approved').length;
-  const dueLate = params.schedules.filter((schedule) => params.myJuntaIds.includes(schedule.junta_id) && schedule.estado === 'vencida').length;
-  const completedCycles = params.juntas.filter((junta) => params.myJuntaIds.includes(junta.id) && junta.estado === 'cerrada').length;
-
-  const paymentScore = Math.max(0, Math.min(60, approved * 8 - dueLate * 5));
-  const cycleScore = Math.min(25, completedCycles * 8);
-  const referenceScore = 0;
-  const score = Math.max(0, Math.min(100, paymentScore + cycleScore + referenceScore + 15));
-  const tiers = [
-    { label: 'Bronce', max: 60 },
-    { label: 'Plata', max: 85 },
-    { label: 'Élite', max: 100 }
-  ];
-  const nextTier = tiers.find((tier) => score < tier.max) ?? tiers[tiers.length - 1];
-
-  return {
-    score,
-    maxScore: 100,
-    scoreLabel: score >= 85 ? 'MIEMBRO CONFIABLE' : score >= 60 ? 'MIEMBRO EN CRECIMIENTO' : 'MIEMBRO NUEVO',
-    pointsToNext: Math.max(0, nextTier.max - score),
-    nextTier: nextTier.label,
-    progressPct: Math.min(100, Math.round((score / 100) * 100))
   };
 }
 
@@ -256,14 +220,15 @@ function getJuntaHistory(params: { juntas: Junta[]; myJuntaIds: string[] }): Jun
     }));
 }
 
-function getNextLevelProgress(score: JuntaScoreData): NextLevelData {
+function getNextLevelProgress(score: UserJuntaScoreResult): NextLevelData {
+  const nextLevel = score.nextLevel ?? 'Élite';
   return {
-    title: `Próximo nivel: ${score.nextTier}`,
-    benefitText: `+${score.pointsToNext} pts para desbloquear juntas de hasta S/ 300/semana y grupos de 15 personas.`,
+    title: `Próximo nivel: ${nextLevel}`,
+    benefitText: `+${score.pointsToNextLevel} pts para desbloquear beneficios adicionales para tu grupo.`,
     currentScore: score.score,
-    targetScore: score.maxScore,
-    missionText: 'Refiere 2 taxistas más para ganar +10 pts al score.',
-    missionCurrent: 0,
+    targetScore: score.nextLevel ? score.score + score.pointsToNextLevel : 100,
+    missionText: score.reasons[0] ?? 'Mantén tus pagos al día para seguir subiendo.',
+    missionCurrent: Math.max(0, 2 - Math.min(2, score.warnings.length)),
     missionTarget: 2
   };
 }
@@ -312,7 +277,7 @@ function PendingPaymentBanner({ data }: { data: PendingPaymentBannerData }) {
   );
 }
 
-function JuntaScoreCard({ score }: { score: JuntaScoreData }) {
+function JuntaScoreCard({ score }: { score: UserJuntaScoreResult }) {
   return (
     <Card className="rounded-3xl border-0 bg-[#171717] p-6 text-white shadow-lg">
       <div className="grid gap-4 md:grid-cols-[100px_1fr] md:items-center">
@@ -321,15 +286,18 @@ function JuntaScoreCard({ score }: { score: JuntaScoreData }) {
           <p className="text-xs text-slate-300">/100</p>
         </div>
         <div className="space-y-2">
-          <Badge className="bg-emerald-500/20 text-emerald-300">{score.scoreLabel}</Badge>
+          <Badge className="bg-emerald-500/20 text-emerald-300">{getScoreBadge(score.level)}</Badge>
           <h2 className="text-3xl font-semibold">Tu score de junta</h2>
           <p className="text-sm text-slate-300">Pagos a tiempo, ciclos completados y referencias acumulan tu reputación financiera en la plataforma.</p>
           <div className="flex items-center gap-3">
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full rounded-full bg-emerald-400" style={{ width: `${score.progressPct}%` }} />
+              <div className="h-full rounded-full bg-emerald-400" style={{ width: `${score.progressToNextLevel}%` }} />
             </div>
-            <p className="text-xs text-slate-300">{score.pointsToNext} pts para <span className="font-semibold text-white">{score.nextTier}</span></p>
+            <p className="text-xs text-slate-300">
+              {score.pointsToNextLevel} pts para <span className="font-semibold text-white">{score.nextLevel ?? 'Élite'}</span>
+            </p>
           </div>
+          {score.warnings[0] && <p className="text-xs text-amber-300">{score.warnings[0]}</p>}
         </div>
       </div>
     </Card>
@@ -483,19 +451,21 @@ export default function DashboardPage() {
     myJuntaIds
   });
 
-  const score = getUserJuntaScore({
+  const scoreStats = buildJuntaScoreStatsFromDomain({
     userId: user.id,
+    juntas: safeJuntas,
+    members: safeMembers,
     payments: safePayments,
-    schedules: safeSchedules,
-    myJuntaIds,
-    juntas: safeJuntas
+    schedules: safeSchedules
   });
 
+  const score = getUserJuntaScore(user.id, scoreStats);
+
   const upcomingPayout = getUpcomingPayout({
+    userId: user.id,
     payouts: safePayouts,
     schedules: safeSchedules,
-    juntas: safeJuntas,
-    userId: user.id
+    juntas: safeJuntas
   });
 
   const contributionSummary = getCurrentCycleContributionSummary({
@@ -518,8 +488,8 @@ export default function DashboardPage() {
     myJuntaIds
   });
 
-  const approvedCount = safePayments.filter((payment) => payment.profile_id === user.id && payment.estado === 'approved').length;
-  const lateCount = safeSchedules.filter((schedule) => myJuntaIds.includes(schedule.junta_id) && schedule.estado === 'vencida').length;
+  const approvedCount = scoreStats.onTimePaymentsRecent + scoreStats.onTimePaymentsLifetime;
+  const lateCount = scoreStats.latePaymentsRecent + scoreStats.defaultPaymentsRecent;
   const paymentRate = approvedCount + lateCount > 0 ? Math.round((approvedCount / (approvedCount + lateCount)) * 100) : 0;
   const completedCycles = safeJuntas.filter((junta) => myJuntaIds.includes(junta.id) && junta.estado === 'cerrada').length;
   const nextLevel = getNextLevelProgress(score);
