@@ -15,24 +15,31 @@ import { mapAuthErrorMessage } from '@/services/auth.service';
 import { useState } from 'react';
 import { checkProfileConflicts } from '@/services/profile.service';
 
+type RegisterFormValues = z.infer<typeof registerSchema>;
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="text-xs text-red-500">{message}</p>;
+}
+
 export function RegisterPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/dashboard';
   const setUser = useAuthStore((s) => s.setUser);
-  const { register, handleSubmit, setError, formState } = useForm<z.infer<typeof registerSchema>>();
+  const { register, handleSubmit, setError, formState } = useForm<RegisterFormValues>();
   const [authError, setAuthError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   return (
-    <Card className="w-full space-y-4">
+    <Card className="w-full space-y-5 p-6 sm:p-7">
       <div>
         <h1 className="text-xl font-semibold">Crea tu cuenta</h1>
         <p className="text-sm text-slate-500">Regístrate para crear y unirte a juntas digitales.</p>
       </div>
       <form
-        className="space-y-3"
+        className="space-y-4"
         onSubmit={handleSubmit(async (values) => {
           setAuthError(null);
           setSuccessMsg(null);
@@ -89,28 +96,38 @@ export function RegisterPageClient() {
           }
         })}
       >
-        <label className="text-sm font-medium">Nombre completo</label>
-        <Input placeholder="Nombre y apellido" {...register('nombre')} />
-        <label className="text-sm font-medium">DNI</label>
-        <Input placeholder="12345678" {...register('dni')} />
-        <label className="text-sm font-medium">Celular</label>
-        <Input placeholder="987654321" {...register('celular')} />
-        <label className="text-sm font-medium">Correo</label>
-        <Input placeholder="correo@ejemplo.com" {...register('email')} />
-        <label className="text-sm font-medium">Contraseña</label>
-        <Input placeholder="Mínimo 8 caracteres" type="password" {...register('password')} />
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Nombre completo</label>
+          <Input placeholder="Nombre y apellido" {...register('nombre')} />
+          <FieldError message={formState.errors.nombre?.message} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">DNI</label>
+          <Input placeholder="12345678" {...register('dni')} />
+          <FieldError message={formState.errors.dni?.message} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Celular</label>
+          <Input placeholder="987654321" {...register('celular')} />
+          <FieldError message={formState.errors.celular?.message} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Correo</label>
+          <Input placeholder="correo@ejemplo.com" autoComplete="email" {...register('email')} />
+          <FieldError message={formState.errors.email?.message} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Contraseña</label>
+          <Input placeholder="Mínimo 8 caracteres" type="password" autoComplete="new-password" {...register('password')} />
+          <FieldError message={formState.errors.password?.message} />
+        </div>
+        {authError && <FieldError message={authError} />}
+        {successMsg && <p className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">{successMsg}</p>}
         <Button className="w-full" disabled={loading}>{loading ? 'Creando cuenta...' : 'Crear cuenta'}</Button>
+        <Link className="text-sm text-slate-700 hover:text-slate-900 hover:underline" href={`/login?redirect=${encodeURIComponent(redirect)}`}>
+          Ya tengo cuenta
+        </Link>
       </form>
-      {formState.errors.nombre && <p className="text-xs text-red-500">{formState.errors.nombre.message}</p>}
-      {formState.errors.dni && <p className="text-xs text-red-500">{formState.errors.dni.message}</p>}
-      {formState.errors.celular && <p className="text-xs text-red-500">{formState.errors.celular.message}</p>}
-      {formState.errors.email && <p className="text-xs text-red-500">{formState.errors.email.message}</p>}
-      {formState.errors.password && <p className="text-xs text-red-500">{formState.errors.password.message}</p>}
-      {authError && <p className="text-xs text-red-500">{authError}</p>}
-      {successMsg && <p className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">{successMsg}</p>}
-      <Link className="text-sm" href={`/login?redirect=${encodeURIComponent(redirect)}`}>
-        Ya tengo cuenta
-      </Link>
     </Card>
   );
 }
