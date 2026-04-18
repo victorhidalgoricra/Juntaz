@@ -8,12 +8,11 @@ import { registerSchema } from '@/features/auth/schemas';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { useAuthStore } from '@/store/auth-store';
 import { supabase } from '@/lib/supabase';
 import { hasSupabase } from '@/lib/env';
 import { mapRegisterErrorMessage } from '@/services/auth.service';
 import { useState } from 'react';
-import { checkProfileConflicts } from '@/services/profile.service';
+import { checkProfileConflicts, ensureProfileExists } from '@/services/profile.service';
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
@@ -26,10 +25,8 @@ export function RegisterPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/dashboard';
-  const setUser = useAuthStore((s) => s.setUser);
   const { register, handleSubmit, setError, formState } = useForm<RegisterFormValues>();
   const [authError, setAuthError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   return (
@@ -42,7 +39,6 @@ export function RegisterPageClient() {
         className="space-y-4"
         onSubmit={handleSubmit(async (values) => {
           setAuthError(null);
-          setSuccessMsg(null);
           const parsed = registerSchema.safeParse(values);
           if (!parsed.success) {
             const issue = parsed.error.issues[0];
@@ -79,16 +75,37 @@ export function RegisterPageClient() {
               const user = data.user;
 
               if (user && (user.identities ?? []).length === 0) {
-                setAuthError('Este correo ya está registrado. Intenta iniciar sesión o recuperar tu contraseña.');
+                setAuthError('Este correo ya está registrado. Inicia sesión o recupera tu contraseña.');
                 return;
               }
 
-              setSuccessMsg('Te enviamos un correo para confirmar tu cuenta. Revisa tu bandeja de entrada y spam.');
+              if (!user) throw new Error('No se pudo crear el usuario en autenticación.');
+
+              const requiresEmailConfirmation = !data.session;
+
+              if (!requiresEmailConfirmation) {
+                const profileSync = await ensureProfileExists({
+                  id: user.id,
+                  email: normalized.email,
+                  nombre: normalized.nombre,
+                  celular: normalized.celular,
+                  dni: normalized.dni
+                });
+                if (!profileSync.ok) throw new Error(`profile_sync_failed: ${profileSync.message}`);
+
+                try {
+                  await supabase.auth.signOut();
+                } catch {
+                  // no-op defensivo: igual redirigimos al login
+                }
+              }
+
+              const signupState = requiresEmailConfirmation ? 'confirm_email' : 'success';
+              router.replace(`/login?signup=${signupState}&redirect=${encodeURIComponent(redirect)}`);
               return;
             }
 
-            setUser({ id: crypto.randomUUID(), ...normalized, global_role: 'user' });
-            router.push(redirect);
+            router.replace(`/login?signup=success&redirect=${encodeURIComponent(redirect)}`);
           } catch (error) {
             console.error('[Register] auth error', error);
             setAuthError(error instanceof Error ? mapRegisterErrorMessage(error.message) : 'No pudimos completar tu registro.');
@@ -123,7 +140,6 @@ export function RegisterPageClient() {
           <FieldError message={formState.errors.password?.message} />
         </div>
         {authError && <FieldError message={authError} />}
-        {successMsg && <p className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">{successMsg}</p>}
         <Button className="w-full" disabled={loading}>{loading ? 'Creando cuenta...' : 'Crear cuenta'}</Button>
         <Link className="text-sm text-slate-700 hover:text-slate-900 hover:underline" href={`/login?redirect=${encodeURIComponent(redirect)}`}>
           Ya tengo cuenta

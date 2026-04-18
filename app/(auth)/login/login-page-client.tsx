@@ -28,12 +28,22 @@ export function LoginPageClient() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/dashboard';
   const confirmedParam = searchParams.get('confirmed');
+  const signupParam = searchParams.get('signup');
   const setUser = useAuthStore((s) => s.setUser);
   const { register, handleSubmit, formState, setError } = useForm<LoginFormValues>();
   const [authError, setAuthError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const confirmedMsg = useMemo(() => (confirmedParam ? 'Tu correo fue confirmado. Ya puedes iniciar sesión.' : null), [confirmedParam]);
+  const signupMsg = useMemo(() => {
+    if (signupParam === 'confirm_email') {
+      return 'Te enviamos un correo de confirmación. Revisa tu bandeja de entrada antes de ingresar.';
+    }
+    if (signupParam === 'success') {
+      return 'Tu cuenta fue creada correctamente. Ahora puedes iniciar sesión.';
+    }
+    return null;
+  }, [signupParam]);
 
   const onSubmit = handleSubmit(async (values) => {
     setAuthError(null);
@@ -126,6 +136,7 @@ export function LoginPageClient() {
         </div>
 
         {authError && <FieldError message={authError} />}
+        {signupMsg && <p className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">{signupMsg}</p>}
         {confirmedMsg && <p className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">{confirmedMsg}</p>}
 
         <Button className="w-full" type="submit" disabled={loading}>
