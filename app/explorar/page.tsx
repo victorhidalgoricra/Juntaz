@@ -18,7 +18,6 @@ export default function ExplorarPage() {
 
   useEffect(() => {
     let mounted = true;
-
     const load = async () => {
       setLoading(true);
       setError(null);
@@ -55,7 +54,12 @@ export default function ExplorarPage() {
         <p className="text-slate-600">Explora juntas públicas y únete con un solo paso.</p>
 
         {loading && <Card>Cargando juntas públicas...</Card>}
-        {error && <Card><p className="text-red-600">{error}</p></Card>}
+        {error && (
+          <Card className="space-y-2">
+            <p className="text-red-600">{error}</p>
+            <Button type="button" variant="outline" onClick={() => window.location.reload()}>Reintentar</Button>
+          </Card>
+        )}
 
         {!loading && !error && (juntas.length === 0 ? (
           <Card>{emptyMessage}</Card>

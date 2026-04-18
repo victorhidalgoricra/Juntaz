@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { PublicNav } from '@/components/marketing/public-nav';
 import { Card } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import { makeSlug } from '@/lib/slug';
 import { generateAccessCode } from '@/lib/access-code';
 import { createJuntaRecord } from '@/services/juntas.repository';
 import { generarCronograma } from '@/services/schedule.service';
+import { calcularSimulacionJunta } from '@/services/incentive.service';
 
 const DEMO_DRAFT_KEY = 'jd-demo-create-draft';
 
@@ -29,7 +30,7 @@ export default function DemoPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const { register, handleSubmit, reset, setError, formState } = useForm<DemoValues>({
+  const { register, control, handleSubmit, reset, setError, formState } = useForm<DemoValues>({
     defaultValues: {
       nombre: '',
       descripcion: '',
@@ -42,6 +43,38 @@ export default function DemoPage() {
       visibilidad: 'privada'
     }
   });
+  const form = useWatch({ control });
+  const previewParticipantes = Math.max(0, Number(form.participantes_max ?? 0));
+  const previewCuota = Math.max(0, Number(form.monto_cuota ?? 0));
+
+  const cycleLabel = useMemo(() => {
+    if (!previewParticipantes) return '—';
+    if (form.frecuencia_pago === 'semanal') return `${previewParticipantes} semanas`;
+    if (form.frecuencia_pago === 'quincenal') return `${previewParticipantes} quincenas`;
+    return `${previewParticipantes} meses`;
+  }, [form.frecuencia_pago, previewParticipantes]);
+
+  const simRows = useMemo(() => {
+    if (!form.fecha_inicio || previewParticipantes < 2 || previewCuota < 20) return [];
+    return calcularSimulacionJunta({
+      participantes: previewParticipantes,
+      cuotaBase: previewCuota,
+      frecuencia: form.frecuencia_pago ?? 'semanal',
+      fechaInicio: form.fecha_inicio,
+      tipoJunta: form.tipo_junta ?? 'normal'
+    }).rows;
+  }, [form.fecha_inicio, form.frecuencia_pago, form.tipo_junta, previewCuota, previewParticipantes]);
+
+  const previewSchedule = useMemo(() => {
+    if (!form.fecha_inicio || previewParticipantes < 1 || previewCuota < 20) return [];
+    return generarCronograma({
+      juntaId: 'demo-preview',
+      participantes: previewParticipantes,
+      monto: previewCuota,
+      frecuencia: form.frecuencia_pago ?? 'semanal',
+      fechaInicio: form.fecha_inicio
+    }).slice(0, 4);
+  }, [form.fecha_inicio, form.frecuencia_pago, previewCuota, previewParticipantes]);
 
   useEffect(() => {
     try {
@@ -173,7 +206,8 @@ export default function DemoPage() {
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       <PublicNav />
-      <main className="mx-auto max-w-4xl space-y-6 px-4 py-10">
+      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-10 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-6">
         <div className="space-y-2 text-center">
           <h1 className="text-3xl font-bold">Crea tu junta desde Demo</h1>
           <p className="text-sm text-slate-600">Completa el formulario real. Si aún no inicias sesión, te guiamos para continuar sin perder tu avance.</p>
@@ -255,6 +289,41 @@ export default function DemoPage() {
               </div>
             </Card>
           )}
+        </Card>
+        </div>
+
+        <Card className="h-fit space-y-3 border-0 bg-[#1A1916] p-5 text-slate-100 lg:sticky lg:top-20">
+          <h2 className="text-lg font-semibold">Vista previa en vivo</h2>
+          <p className="text-sm">{(form.nombre ?? '').trim() || 'Nueva junta demo'}</p>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-white/10 px-2 py-1 capitalize">{form.visibilidad ?? 'privada'}</span>
+            <span className="rounded-full bg-white/10 px-2 py-1 capitalize">{form.frecuencia_pago ?? 'semanal'}</span>
+            <span className="rounded-full bg-white/10 px-2 py-1">{form.turn_assignment_mode === 'manual' ? 'turnos manuales' : 'turnos al azar'}</span>
+          </div>
+
+          <div className="space-y-1 text-sm">
+            <p>Bolsa total: S/ {(previewParticipantes * previewCuota).toFixed(2)}</p>
+            <p>Cuota base: S/ {previewCuota.toFixed(2)}</p>
+            <p>Duración del ciclo: {cycleLabel}</p>
+          </div>
+
+          <div className="space-y-1 text-xs">
+            <p className="uppercase tracking-wide text-slate-400">Primeras rondas</p>
+            {simRows.length === 0 && <p className="text-slate-300">Completa fecha, integrantes y cuota para simular turnos.</p>}
+            {simRows.slice(0, 3).map((row) => (
+              <p key={`sim-${row.turno}`}>
+                Turno #{row.turno}: {row.fechaRonda} · S/ {row.cuotaPorRonda.toFixed(2)}
+              </p>
+            ))}
+          </div>
+
+          <div className="space-y-1 text-xs">
+            <p className="uppercase tracking-wide text-slate-400">Cronograma estimado</p>
+            {previewSchedule.length === 0 && <p className="text-slate-300">Aún no hay fechas para mostrar.</p>}
+            {previewSchedule.map((row) => (
+              <p key={row.id}>Cuota #{row.cuota_numero}: vence {row.fecha_vencimiento}</p>
+            ))}
+          </div>
         </Card>
       </main>
     </div>

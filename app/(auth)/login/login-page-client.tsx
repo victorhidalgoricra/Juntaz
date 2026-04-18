@@ -64,22 +64,31 @@ export function LoginPageClient() {
 
         const globalRole = await resolveGlobalRole(values.email);
         const profileResult = await fetchProfileById(user.id);
-        if (!profileResult.ok) throw new Error(profileResult.message);
-        if (!profileResult.data) {
+        if (!profileResult.ok) {
+          console.warn('[Login] profile lookup failed, continuing with auth payload', profileResult.message);
+        }
+
+        if (profileResult.ok && !profileResult.data) {
           const ensureResult = await ensureProfileExists({
             id: user.id,
             email: values.email,
             nombre: user.user_metadata?.full_name ?? values.email.split('@')[0],
-            celular: user.user_metadata?.phone ?? '000000000',
+            celular: user.user_metadata?.phone,
             dni: user.user_metadata?.dni
           });
-          if (!ensureResult.ok) throw new Error(ensureResult.message);
+          if (!ensureResult.ok) {
+            console.warn('[Login] profile ensure failed, continuing with auth payload', ensureResult.message);
+          }
         }
-        let refreshedProfile = profileResult.data;
+
+        let refreshedProfile = profileResult.ok ? profileResult.data : null;
         if (!refreshedProfile) {
           const retryProfile = await fetchProfileById(user.id);
-          if (!retryProfile.ok) throw new Error(retryProfile.message);
-          refreshedProfile = retryProfile.data;
+          if (!retryProfile.ok) {
+            console.warn('[Login] profile retry failed, continuing with auth payload', retryProfile.message);
+          } else {
+            refreshedProfile = retryProfile.data;
+          }
         }
         setUser({
           id: user.id,
@@ -88,7 +97,7 @@ export function LoginPageClient() {
           first_name: refreshedProfile?.first_name,
           second_name: refreshedProfile?.second_name,
           paternal_last_name: refreshedProfile?.paternal_last_name,
-          celular: refreshedProfile?.celular ?? user.user_metadata?.phone ?? '000000000',
+          celular: refreshedProfile?.celular ?? user.user_metadata?.phone ?? '',
           dni: refreshedProfile?.dni,
           foto_url: refreshedProfile?.foto_url,
           preferred_payout_method: refreshedProfile?.preferred_payout_method,

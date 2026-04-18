@@ -6,6 +6,16 @@ import { normalizeDni, normalizePhone } from '@/lib/profile-normalization';
 const profileSelectFields =
   'id,email,nombre,first_name,second_name,paternal_last_name,celular,dni,foto_url,preferred_payout_method,payout_account_name,payout_phone_number,payout_bank_name,payout_account_number,payout_cci,payout_notes,global_role';
 
+function generateFallbackPhone(seed: string) {
+  const base = seed.trim() || crypto.randomUUID();
+  let numeric = '';
+  for (let i = 0; i < base.length; i += 1) {
+    numeric += (base.charCodeAt(i) % 10).toString();
+  }
+  const padded = `${numeric}000000000`;
+  return `9${padded.slice(0, 8)}`;
+}
+
 export async function ensureProfileExists(input: {
   id: string;
   email: string;
@@ -19,7 +29,7 @@ export async function ensureProfileExists(input: {
     id: input.id,
     email: input.email,
     nombre: input.nombre?.trim() || input.email.split('@')[0],
-    celular: normalizePhone(input.celular) || '000000000',
+    celular: normalizePhone(input.celular) || generateFallbackPhone(`${input.id}:${input.email}`),
     dni: normalizeDni(input.dni) || null
   };
 

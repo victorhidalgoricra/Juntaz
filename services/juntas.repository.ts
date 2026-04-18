@@ -32,10 +32,33 @@ function mapSupabaseErrorMessage(message: string) {
   if (message.includes("Could not find the table 'public.juntas'")) {
     return 'La tabla public.juntas no existe en Supabase. Ejecuta las migraciones SQL del proyecto.';
   }
+  if (message.includes("Could not find the function public.catalog_juntas")) {
+    return 'Falta la función catalog_juntas en Supabase. Ejecuta las migraciones más recientes.';
+  }
+  if (message.toLowerCase().includes('permission denied')) {
+    return 'No tienes permisos para completar esta acción.';
+  }
   if (message.includes('violates foreign key constraint')) {
     return 'No se pudo eliminar la junta porque aún tiene datos relacionados.';
   }
   return message;
+}
+
+async function fetchPublicJuntasFallback() {
+  if (!supabase) return { ok: true as const, data: [] as Junta[] };
+
+  const fallback = await supabase
+    .schema('public')
+    .from('juntas')
+    .select('id,admin_id,nombre,descripcion,visibilidad,tipo_junta,cuota_base,monto_cuota,frecuencia_pago,fecha_inicio,estado,participantes_max,access_code,slug,created_at,bloqueada')
+    .eq('visibilidad', 'publica')
+    .in('estado', ['borrador', 'activa'])
+    .eq('bloqueada', false)
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (fallback.error) return { ok: false as const, message: mapSupabaseErrorMessage(fallback.error.message) };
+  return { ok: true as const, data: (fallback.data ?? []) as Junta[] };
 }
 
 export async function createJuntaRecord(junta: Junta) {
@@ -155,18 +178,12 @@ export async function fetchPublicJuntas() {
   const { data, error } = await supabase.schema('public').rpc('catalog_juntas', { p_include_private: false });
 
   if (error) {
-    const fallback = await supabase
-      .schema('public')
-      .from('juntas')
-      .select('id,admin_id,nombre,descripcion,visibilidad,tipo_junta,cuota_base,monto_cuota,frecuencia_pago,fecha_inicio,estado,participantes_max,access_code,slug,created_at')
-      .eq('visibilidad', 'publica')
-      .in('estado', ['borrador', 'activa'])
-      .order('created_at', { ascending: false })
-      .limit(200);
-    if (fallback.error) return { ok: false as const, message: mapSupabaseErrorMessage(fallback.error.message) };
-    return { ok: true as const, data: (fallback.data ?? []) as Junta[] };
+    return fetchPublicJuntasFallback();
   }
 
+  if (!Array.isArray(data)) {
+    return fetchPublicJuntasFallback();
+  }
   return { ok: true as const, data: (data ?? []) as Junta[] };
 }
 
