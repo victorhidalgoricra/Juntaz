@@ -15,6 +15,7 @@ import {
 } from '@/lib/payment-instructions';
 import { getJuntaEngagementLayer, type JuntaMission, type LevelUnlocks } from '@/services/junta-engagement.service';
 import { fetchProfilesByIds } from '@/services/profile.service';
+import { fetchUserJuntaSnapshot } from '@/services/juntas.repository';
 import {
   buildJuntaScoreStatsFromDomain,
   getScoreBadge,
@@ -25,6 +26,7 @@ import { useAppStore } from '@/store/app-store';
 import { useAuthStore } from '@/store/auth-store';
 import { Junta, JuntaMember, Payment, PaymentSchedule, Payout, Profile } from '@/types/domain';
 import { parseCalendarDate } from '@/lib/calendar-date';
+import { getActiveMemberCountByJunta } from '@/lib/junta-members';
 
 type UpcomingPayoutData = {
   juntaId: string;
@@ -158,6 +160,7 @@ function getActiveJuntas(params: {
   members: JuntaMember[];
   schedules: PaymentSchedule[];
   userId: string;
+  memberCountByJunta: Map<string, number>;
 }): JuntaCardData[] {
   const myTurnMap = new Map(
     params.members.filter((member) => member.profile_id === params.userId).map((member) => [member.junta_id, member.orden_turno])
@@ -176,7 +179,7 @@ function getActiveJuntas(params: {
       return {
         id: junta.id,
         nombre: junta.nombre,
-        miembros: Number(junta.integrantes_actuales ?? junta.participantes_max ?? 0),
+        miembros: params.memberCountByJunta.get(junta.id) ?? Number(junta.integrantes_actuales ?? 0),
         cuota: Number(junta.cuota_base ?? junta.monto_cuota ?? 0),
         frecuencia: junta.frecuencia_pago,
         tipo: junta.tipo_junta ?? 'normal',
@@ -462,7 +465,7 @@ function NextLevelSection({ data }: { data: NextLevelData }) {
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
-  const { juntas, schedules, payments, members, payouts } = useAppStore();
+  const { juntas, schedules, payments, members, payouts, setData } = useAppStore();
   const safeJuntas = useMemo(() => (Array.isArray(juntas) ? juntas : []), [juntas]);
   const safeSchedules = useMemo(() => (Array.isArray(schedules) ? schedules : []), [schedules]);
   const safePayments = useMemo(() => (Array.isArray(payments) ? payments : []), [payments]);
@@ -470,6 +473,25 @@ export default function DashboardPage() {
   const safePayouts = useMemo(() => (Array.isArray(payouts) ? payouts : []), [payouts]);
   const [profilesById, setProfilesById] = useState<Record<string, Profile>>({});
   const userId = user?.id ?? '';
+
+  useEffect(() => {
+    if (!userId) return;
+
+    fetchUserJuntaSnapshot(userId).then((result) => {
+      if (!result.ok) {
+        console.error('[Dashboard] snapshot load error', result.message);
+        return;
+      }
+
+      setData({
+        juntas: result.data.juntas,
+        members: result.data.members,
+        schedules: result.data.schedules,
+        payments: result.data.payments,
+        payouts: result.data.payouts
+      });
+    });
+  }, [setData, userId]);
 
   const myJuntaIds = useMemo(
     () => (user ? getMyJuntaIds(user.id, safeJuntas, safeMembers) : []),
@@ -585,12 +607,15 @@ export default function DashboardPage() {
     myJuntaIds
   });
 
+  const memberCountByJunta = getActiveMemberCountByJunta(safeJuntas, safeMembers);
+
   const activeJuntas = getActiveJuntas({
     juntas: safeJuntas,
     myJuntaIds,
     members: safeMembers,
     schedules: safeSchedules,
-    userId: user.id
+    userId: user.id,
+    memberCountByJunta
   });
 
   const historyJuntas = getJuntaHistory({

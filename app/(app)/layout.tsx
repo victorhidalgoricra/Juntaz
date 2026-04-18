@@ -8,6 +8,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { Button } from '@/components/ui/button';
 import { hasSupabase } from '@/lib/env';
 import { supabase } from '@/lib/supabase';
+import { fetchUserJuntaSnapshot } from '@/services/juntas.repository';
 
 export default function PrivateLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -21,6 +22,21 @@ export default function PrivateLayout({ children }: { children: ReactNode }) {
       router.replace(`/login?redirect=${encodeURIComponent(redirect)}`);
     }
   }, [user, router, pathname]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    fetchUserJuntaSnapshot(user.id).then((result) => {
+      if (!result.ok) return;
+      setData({
+        juntas: result.data.juntas,
+        members: result.data.members,
+        schedules: result.data.schedules,
+        payments: result.data.payments,
+        payouts: result.data.payouts
+      });
+    });
+  }, [setData, user?.id]);
 
   if (!user) {
     return (

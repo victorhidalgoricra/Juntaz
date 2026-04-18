@@ -13,6 +13,7 @@ import { hasSupabase } from '@/lib/env';
 import { supabase } from '@/lib/supabase';
 import { isJuntaActive } from '@/lib/junta-status';
 import { APP_BUSINESS_TIMEZONE, isJuntaBlockedByDeadline } from '@/lib/junta-blocking';
+import { getActiveMemberCountByJunta } from '@/lib/junta-members';
 import {
   activateJuntaIfReady,
   deleteDraftJunta,
@@ -72,10 +73,7 @@ export default function JuntasDisponiblesPage() {
     reloadCatalog();
   }, [reloadCatalog]);
 
-  const countByJunta = useMemo(
-    () => new Map(allJuntas.map((junta) => [junta.id, Number(junta.integrantes_actuales ?? 0)])),
-    [allJuntas]
-  );
+  const countByJunta = useMemo(() => getActiveMemberCountByJunta(allJuntas, allMembers), [allJuntas, allMembers]);
 
   const visibleJuntas = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();

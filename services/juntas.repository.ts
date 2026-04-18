@@ -307,6 +307,94 @@ export async function deleteDraftJunta(params: { juntaId: string; currentProfile
   return { ok: true as const };
 }
 
+
+export async function fetchUserJuntaSnapshot(profileId: string) {
+  if (!hasSupabase || !supabase) {
+    return {
+      ok: true as const,
+      data: {
+        juntas: [] as Junta[],
+        members: [] as JuntaMember[],
+        schedules: [] as any[],
+        payments: [] as any[],
+        payouts: [] as any[]
+      }
+    };
+  }
+
+  const [ownedResult, membershipResult] = await Promise.all([
+    supabase.schema('public').from('juntas').select('*').eq('admin_id', profileId),
+    supabase.schema('public').from('junta_members').select('junta_id').eq('profile_id', profileId).eq('estado', 'activo')
+  ]);
+
+  if (ownedResult.error) return { ok: false as const, message: mapSupabaseErrorMessage(ownedResult.error.message) };
+  if (membershipResult.error) return { ok: false as const, message: mapSupabaseErrorMessage(membershipResult.error.message) };
+
+  const juntaIds = Array.from(new Set([
+    ...((ownedResult.data ?? []).map((row) => row.id)),
+    ...((membershipResult.data ?? []).map((row) => row.junta_id))
+  ]));
+
+  if (juntaIds.length === 0) {
+    return {
+      ok: true as const,
+      data: {
+        juntas: [] as Junta[],
+        members: [] as JuntaMember[],
+        schedules: [] as any[],
+        payments: [] as any[],
+        payouts: [] as any[]
+      }
+    };
+  }
+
+  const [juntasResult, membersResult, schedulesResult, paymentsResult, payoutsResult] = await Promise.all([
+    supabase.schema('public').from('juntas').select('*').in('id', juntaIds),
+    supabase.schema('public').from('junta_members').select('*').in('junta_id', juntaIds),
+    supabase.schema('public').from('payment_schedules').select('*').in('junta_id', juntaIds),
+    supabase.schema('public').from('payments').select('*').in('junta_id', juntaIds),
+    supabase.schema('public').from('payouts').select('*').in('junta_id', juntaIds)
+  ]);
+
+  if (juntasResult.error) return { ok: false as const, message: mapSupabaseErrorMessage(juntasResult.error.message) };
+  if (membersResult.error) return { ok: false as const, message: mapSupabaseErrorMessage(membersResult.error.message) };
+  if (schedulesResult.error) return { ok: false as const, message: mapSupabaseErrorMessage(schedulesResult.error.message) };
+  if (paymentsResult.error) return { ok: false as const, message: mapSupabaseErrorMessage(paymentsResult.error.message) };
+  if (payoutsResult.error) return { ok: false as const, message: mapSupabaseErrorMessage(payoutsResult.error.message) };
+
+  return {
+    ok: true as const,
+    data: {
+      juntas: (juntasResult.data ?? []) as Junta[],
+      members: (membersResult.data ?? []) as JuntaMember[],
+      schedules: (schedulesResult.data ?? []),
+      payments: (paymentsResult.data ?? []),
+      payouts: (payoutsResult.data ?? [])
+    }
+  };
+}
+
+export async function updateJuntaMemberTurns(params: { juntaId: string; turnsByProfileId: Record<string, number> }) {
+  if (!hasSupabase || !supabase) return { ok: true as const };
+
+  const updates = Object.entries(params.turnsByProfileId).map(([profileId, orden_turno]) => ({
+    junta_id: params.juntaId,
+    profile_id: profileId,
+    orden_turno
+  }));
+
+  if (updates.length === 0) return { ok: true as const };
+
+  const { error } = await supabase
+    .schema('public')
+    .from('junta_members')
+    .upsert(updates, { onConflict: 'junta_id,profile_id' });
+
+  if (error) return { ok: false as const, message: mapSupabaseErrorMessage(error.message) };
+
+  return { ok: true as const };
+}
+
 export type AdminJuntaListItem = {
   id: string;
   nombre: string;

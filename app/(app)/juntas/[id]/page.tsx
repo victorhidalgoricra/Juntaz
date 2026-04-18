@@ -7,12 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/store/app-store';
 import { useAuthStore } from '@/store/auth-store';
-import { activateJuntaIfReady, fetchAvailableJuntas, fetchJuntaById, fetchMembersByJuntaIds, fetchMyActiveMembership } from '@/services/juntas.repository';
+import { activateJuntaIfReady, fetchAvailableJuntas, fetchJuntaById, fetchMembersByJuntaIds, fetchMyActiveMembership, fetchUserJuntaSnapshot, updateJuntaMemberTurns } from '@/services/juntas.repository';
 import { calcularSimulacionJunta } from '@/services/incentive.service';
 import { Junta } from '@/types/domain';
 import { formatIncentiveLabel, getAvatarColor, getInitial } from '@/lib/profile-display';
 import { isJuntaActive } from '@/lib/junta-status';
 import { APP_BUSINESS_TIMEZONE, isJuntaBlockedByDeadline } from '@/lib/junta-blocking';
+import { getActiveMembersForJunta } from '@/lib/junta-members';
 import {
   getCurrentWeekSummary,
   getPaidParticipants,
@@ -150,19 +151,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
 
   const juntaMembers = useMemo(() => {
     if (!junta) return detailMembers;
-    const hasCreatorAsMember = detailMembers.some((member) => member.profile_id === junta.admin_id && member.estado === 'activo');
-    if (hasCreatorAsMember) return detailMembers;
-    return [
-      {
-        id: `creator-fallback-${junta.id}`,
-        junta_id: junta.id,
-        profile_id: junta.admin_id,
-        estado: 'activo' as const,
-        rol: 'admin' as const,
-        orden_turno: 1
-      },
-      ...detailMembers
-    ];
+    return getActiveMembersForJunta(junta, detailMembers);
   }, [detailMembers, junta]);
   const currentUserName = useMemo(() => user?.nombre?.split(' ')[0] ?? 'Tú', [user?.nombre]);
 
@@ -178,6 +167,25 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
       incentivoPorTurno: junta.incentivo_turnos
     });
   }, [junta]);
+
+  const refreshSnapshot = async () => {
+    if (!user?.id) return;
+    const result = await fetchUserJuntaSnapshot(user.id);
+    if (!result.ok) return;
+    setData({
+      juntas: result.data.juntas,
+      members: result.data.members,
+      schedules: result.data.schedules,
+      payments: result.data.payments,
+      payouts: result.data.payouts
+    });
+
+    const refreshedJunta = result.data.juntas.find((item) => item.id === params.id) ?? null;
+    if (refreshedJunta) setJunta(refreshedJunta);
+    setDetailMembers(result.data.members.filter((member) => member.junta_id === params.id && member.estado === 'activo'));
+    setDetailPayments(result.data.payments.filter((payment) => payment.junta_id === params.id));
+    setDetailSchedules(result.data.schedules.filter((schedule) => schedule.junta_id === params.id));
+  };
 
   if (loadingJunta) return <Card>Cargando junta...</Card>;
   if (loadError) return <Card><p className="text-sm text-red-600">No pudimos cargar la junta: {loadError}</p></Card>;
@@ -402,6 +410,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
                         const next: Record<string, number> = {};
                         shuffled.forEach((member, idx) => { next[member.profile_id] = idx + 1; });
                         setManualTurns(next);
+                        setPaymentInfo(null);
                       }}
                     >
                       Sortear aleatoriamente
@@ -409,11 +418,34 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
                     <Button
                       disabled={juntaMembers.length < junta.participantes_max}
                       onClick={async () => {
+                        if (canOperateTurns) {
+                          const assignedTurns = juntaMembers.map((member) => manualTurns[member.profile_id] ?? member.orden_turno);
+                          const uniqueTurns = new Set(assignedTurns);
+                          if (uniqueTurns.size !== juntaMembers.length) {
+                            setPaymentInfo('No puedes repetir turnos. Asigna un turno único por integrante.');
+                            return;
+                          }
+
+                          const turnsByProfileId = juntaMembers.reduce<Record<string, number>>((acc, member) => {
+                            acc[member.profile_id] = manualTurns[member.profile_id] ?? member.orden_turno;
+                            return acc;
+                          }, {});
+
+                          const saveTurnsResult = await updateJuntaMemberTurns({ juntaId: junta.id, turnsByProfileId });
+                          if (!saveTurnsResult.ok) {
+                            setPaymentInfo(saveTurnsResult.message);
+                            return;
+                          }
+                        }
+
                         const result = await activateJuntaIfReady({ juntaId: junta.id });
-                        if (!result.ok) return;
-                        const nextJunta = { ...junta, ...result.data };
-                        setJunta(nextJunta);
-                        setData({ juntas: juntas.map((item) => (item.id === junta.id ? nextJunta : item)) });
+                        if (!result.ok) {
+                          setPaymentInfo(result.message);
+                          return;
+                        }
+
+                        await refreshSnapshot();
+                        setPaymentInfo(null);
                       }}
                     >
                       Activar junta
@@ -421,6 +453,7 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
                   </div>
                 </>
               )}
+              {paymentInfo && <p className="text-xs text-rose-700">{paymentInfo}</p>}
               {blockedByDeadline && (
                 <p className="text-xs text-rose-700">Bloqueada por no activarse antes de la fecha del primer pago ({APP_BUSINESS_TIMEZONE}).</p>
               )}
