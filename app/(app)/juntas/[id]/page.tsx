@@ -147,7 +147,22 @@ export default function JuntaDetailPage({ params }: { params: { id: string } }) 
     setPhaseTwoLoading(false);
   }, [accessState, junta, members, payments, schedules]);
 
-  const juntaMembers = useMemo(() => detailMembers, [detailMembers]);
+  const juntaMembers = useMemo(() => {
+    if (!junta) return detailMembers;
+    const hasCreatorAsMember = detailMembers.some((member) => member.profile_id === junta.admin_id && member.estado === 'activo');
+    if (hasCreatorAsMember) return detailMembers;
+    return [
+      {
+        id: `creator-fallback-${junta.id}`,
+        junta_id: junta.id,
+        profile_id: junta.admin_id,
+        estado: 'activo' as const,
+        rol: 'admin' as const,
+        orden_turno: 1
+      },
+      ...detailMembers
+    ];
+  }, [detailMembers, junta]);
   const currentUserName = useMemo(() => user?.nombre?.split(' ')[0] ?? 'Tú', [user?.nombre]);
 
   const simulation = useMemo(() => {

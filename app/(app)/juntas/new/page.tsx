@@ -67,6 +67,8 @@ function createJuntaPayload(params: {
       slug,
       invite_token: crypto.randomUUID(),
       access_code: accessCode,
+      integrantes_actuales: 1,
+      is_member_current_user: true,
       nombre: values.nombre.trim(),
       descripcion: values.descripcion,
       moneda: 'PEN' as const,
