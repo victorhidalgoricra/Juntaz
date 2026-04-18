@@ -48,7 +48,7 @@ export default function ExplorarPage() {
   const emptyMessage = useMemo(() => 'No hay juntas públicas por ahora.', []);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       <PublicNav />
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-10">
         <h1 className="text-3xl font-bold">Juntas disponibles</h1>
