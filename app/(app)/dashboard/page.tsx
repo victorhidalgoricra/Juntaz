@@ -8,10 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { getPaymentAlertState, type PaymentAlertState } from '@/lib/payment-alert';
-import { buildPaymentDebtItems } from '@/lib/payment-debts';
 import { getJuntaEngagementLayer, type JuntaMission, type LevelUnlocks } from '@/services/junta-engagement.service';
 import { fetchProfilesByIds } from '@/services/profile.service';
-import { fetchUserJuntaSnapshot } from '@/services/juntas.repository';
 import {
   buildJuntaScoreStatsFromDomain,
   getScoreBadge,
@@ -220,7 +218,9 @@ function DashboardHeader({ displayName }: { displayName: string }) {
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <button type="button" className="rounded-full border border-slate-200 bg-white p-2 text-lg">🔔</button>
+        <Link href="/account?tab=notifications" aria-label="Ir a notificaciones" className="rounded-full border border-slate-200 bg-white p-2 text-lg">
+          🔔
+        </Link>
         <button type="button" className="rounded-full border border-slate-200 bg-white p-2 text-lg">⋯</button>
       </div>
     </div>
@@ -229,8 +229,8 @@ function DashboardHeader({ displayName }: { displayName: string }) {
 
 function PendingPaymentBanner({ data }: { data: PaymentAlertState }) {
   if (!data.juntaId || !data.cuotaId) return null;
-  const directHref = `/pagar?juntaId=${encodeURIComponent(data.juntaId)}&cuotaId=${encodeURIComponent(data.cuotaId)}`;
-  const fallbackHref = '/pagar';
+  const directHref = `/juntas/${data.juntaId}/registrar-pago?juntaId=${encodeURIComponent(data.juntaId)}&cuotaId=${encodeURIComponent(data.cuotaId)}&src=dashboard`;
+  const fallbackHref = `/juntas/${data.juntaId}/payments`;
   const toneClass = data.tone === 'destructive'
     ? 'border-rose-300 bg-rose-100 hover:border-rose-400'
     : 'border-amber-300 bg-amber-100 hover:border-amber-400';
@@ -252,43 +252,6 @@ function PendingPaymentBanner({ data }: { data: PaymentAlertState }) {
         </div>
       </Card>
     </Link>
-  );
-}
-
-function PaymentNotificationsCard({ items }: { items: ReturnType<typeof buildPaymentDebtItems> }) {
-  const pending = items.filter((item) => item.status !== 'pagada');
-  const urgent = pending.filter((item) => item.status === 'vencida' || item.status === 'vence_hoy');
-
-  return (
-    <Card className="border border-slate-200 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-slate-900">Notificaciones y recordatorios</h2>
-        <Link href="/notifications" className="text-xs font-medium text-blue-700">Ver centro de alertas →</Link>
-      </div>
-      {pending.length === 0 ? (
-        <p className="mt-2 text-sm text-slate-600">No tienes cuotas pendientes por ahora. Todo al día ✅</p>
-      ) : (
-        <>
-          <p className="mt-2 text-sm text-slate-600">Tienes {pending.length} cuotas pendientes ({urgent.length} urgentes).</p>
-          <div className="mt-3 space-y-2">
-            {pending.slice(0, 3).map((item) => (
-              <div key={item.id} className="rounded-md border border-slate-200 p-3 text-sm">
-                <p className="font-medium text-slate-900">{item.juntaNombre} · Cuota {item.cuotaNumero}</p>
-                <p className="text-slate-700">Debes pagar a {item.receiverName} · {money(item.monto)}</p>
-                <p className="text-xs text-slate-500">
-                  {item.status === 'vencida' ? 'Vencida' : item.status === 'vence_hoy' ? 'Vence hoy' : 'Pendiente'} · Método receptor: {item.receiverMethod}
-                </p>
-                <div className="mt-2">
-                  <Link href={`/juntas/${item.juntaId}/registrar-pago?juntaId=${encodeURIComponent(item.juntaId)}&cuotaId=${encodeURIComponent(item.cuotaId)}&src=dashboard_notifications`}>
-                    <Button variant="outline">Pagar esta cuota</Button>
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </Card>
   );
 }
 
@@ -452,7 +415,7 @@ function NextLevelSection({ data }: { data: NextLevelData }) {
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
-  const { juntas, schedules, payments, members, payouts, setData } = useAppStore();
+  const { juntas, schedules, payments, members, payouts } = useAppStore();
   const safeJuntas = useMemo(() => (Array.isArray(juntas) ? juntas : []), [juntas]);
   const safeSchedules = useMemo(() => (Array.isArray(schedules) ? schedules : []), [schedules]);
   const safePayments = useMemo(() => (Array.isArray(payments) ? payments : []), [payments]);
@@ -460,25 +423,6 @@ export default function DashboardPage() {
   const safePayouts = useMemo(() => (Array.isArray(payouts) ? payouts : []), [payouts]);
   const [profilesById, setProfilesById] = useState<Record<string, Profile>>({});
   const userId = user?.id ?? '';
-
-  useEffect(() => {
-    if (!userId) return;
-
-    fetchUserJuntaSnapshot(userId).then((result) => {
-      if (!result.ok) {
-        console.error('[Dashboard] snapshot load error', result.message);
-        return;
-      }
-
-      setData({
-        juntas: result.data.juntas,
-        members: result.data.members,
-        schedules: result.data.schedules,
-        payments: result.data.payments,
-        payouts: result.data.payouts
-      });
-    });
-  }, [setData, userId]);
 
   const myJuntaIds = useMemo(
     () => (user ? getMyJuntaIds(user.id, safeJuntas, safeMembers) : []),
@@ -511,16 +455,6 @@ export default function DashboardPage() {
     schedules: safeSchedules,
     payments: safePayments
   });
-
-  const paymentDebts = useMemo(() => buildPaymentDebtItems({
-    userId,
-    juntas: safeJuntas,
-    members: safeMembers,
-    schedules: safeSchedules,
-    payments: safePayments,
-    profilesById,
-    fallbackProfile: user
-  }), [profilesById, safeJuntas, safeMembers, safePayments, safeSchedules, user, userId]);
 
   if (!user) return <Card>Necesitas iniciar sesión para ver tu dashboard.</Card>;
 
@@ -580,7 +514,6 @@ export default function DashboardPage() {
       <DashboardHeader displayName={displayName} />
 
       {paymentAlert.status !== 'none' && paymentAlert.status !== 'paid' && <PendingPaymentBanner data={paymentAlert} />}
-      <PaymentNotificationsCard items={paymentDebts} />
 
       <JuntaScoreCard score={score} />
 

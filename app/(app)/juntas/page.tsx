@@ -13,11 +13,12 @@ import { hasSupabase } from '@/lib/env';
 import { supabase } from '@/lib/supabase';
 import { isJuntaActive } from '@/lib/junta-status';
 import { APP_BUSINESS_TIMEZONE, isJuntaBlockedByDeadline } from '@/lib/junta-blocking';
-import { getActiveMemberCountByJunta } from '@/lib/junta-members';
+import { getActiveMemberCountByJunta, isUserMember } from '@/lib/junta-members';
 import {
   activateJuntaIfReady,
   deleteDraftJunta,
   fetchPublicJuntas,
+  fetchUserJuntaSnapshot,
   findJuntaByAccessCode,
   joinJuntaAsParticipant,
   leaveJuntaAsParticipant
@@ -38,6 +39,7 @@ export default function JuntasDisponiblesPage() {
   const allJuntas = useAppStore((s) => (Array.isArray(s.juntas) ? s.juntas : []));
   const allMembers = useAppStore((s) => (Array.isArray(s.members) ? s.members : []));
   const setData = useAppStore((s) => s.setData);
+  const addNotification = useAppStore((s) => s.addNotification);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,15 +59,32 @@ export default function JuntasDisponiblesPage() {
     setLoading(true);
     setError(null);
 
-    const result = await fetchPublicJuntas();
-    if (!result.ok) {
-      console.error('[Juntas disponibles] error loading catalog', result.message);
+    const [catalogResult, snapshotResult] = await Promise.all([
+      fetchPublicJuntas(),
+      fetchUserJuntaSnapshot(user.id)
+    ]);
+
+    if (!catalogResult.ok) {
+      console.error('[Juntas disponibles] error loading catalog', catalogResult.message);
       setError('No pudimos cargar las juntas disponibles. Intenta nuevamente.');
       setLoading(false);
       return;
     }
 
-    setData({ juntas: result.data });
+    if (!snapshotResult.ok) {
+      console.error('[Juntas disponibles] error loading snapshot', snapshotResult.message);
+      setError('No pudimos sincronizar tu estado de membresía. Intenta nuevamente.');
+      setLoading(false);
+      return;
+    }
+
+    setData({
+      juntas: catalogResult.data,
+      members: snapshotResult.data.members,
+      schedules: snapshotResult.data.schedules,
+      payments: snapshotResult.data.payments,
+      payouts: snapshotResult.data.payouts
+    });
     setLoading(false);
   }, [user, setData]);
 
@@ -79,7 +98,7 @@ export default function JuntasDisponiblesPage() {
     const normalizedQuery = query.trim().toLowerCase();
 
     return allJuntas.filter((j) => {
-      const isMine = j.admin_id === user?.id || j.is_member_current_user === true;
+      const isMine = j.admin_id === user?.id || isUserMember({ juntaId: j.id, userId: user?.id, members: allMembers });
       const passesFilter =
         activeFilter === 'todas' ||
         (activeFilter === 'publica' && j.visibilidad === 'publica') ||
@@ -93,7 +112,7 @@ export default function JuntasDisponiblesPage() {
 
       return passesFilter && passesQuery;
     });
-  }, [activeFilter, allJuntas, query, user?.id]);
+  }, [activeFilter, allJuntas, allMembers, query, user?.id]);
 
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
@@ -102,12 +121,12 @@ export default function JuntasDisponiblesPage() {
       '[Juntas disponibles] debug catalog snapshot',
       visibleJuntas.map((junta) => ({
         juntaId: junta.id,
-        is_member_current_user: junta.is_member_current_user,
+        is_member_current_user: isUserMember({ juntaId: junta.id, userId: user?.id, members: allMembers }),
         isOwner: junta.admin_id === user?.id,
         integrantes_actuales: Number(junta.integrantes_actuales ?? 0)
       }))
     );
-  }, [user?.id, visibleJuntas]);
+  }, [allMembers, user?.id, visibleJuntas]);
 
   if (!user) {
     return (
@@ -156,10 +175,28 @@ export default function JuntasDisponiblesPage() {
       return;
     }
 
-    setData({
-      members: [...allMembers, result.data],
-      juntas: allJuntas.map((j) => (j.id === juntaId ? { ...j, integrantes_actuales: Number(j.integrantes_actuales ?? 0) + 1, is_member_current_user: true } : j))
+    const snapshot = await fetchUserJuntaSnapshot(user.id);
+    if (snapshot.ok) {
+      setData({
+        members: snapshot.data.members,
+        schedules: snapshot.data.schedules,
+        payments: snapshot.data.payments,
+        payouts: snapshot.data.payouts
+      });
+    } else {
+      setData({
+        members: [...allMembers, result.data],
+        juntas: allJuntas.map((j) => (j.id === juntaId ? { ...j, integrantes_actuales: Number(j.integrantes_actuales ?? 0) + 1 } : j))
+      });
+    }
+    const joinedJunta = allJuntas.find((item) => item.id === juntaId);
+    addNotification({
+      profile_id: user.id,
+      titulo: 'Te uniste a una junta',
+      mensaje: `Ahora participas en ${joinedJunta?.nombre ?? 'tu nueva junta'}.`,
+      leida: false
     });
+    await reloadCatalog();
     setJoiningId(null);
   };
 
@@ -189,10 +226,21 @@ export default function JuntasDisponiblesPage() {
       return;
     }
 
-    setData({
-      members: allMembers.filter((member) => !(member.junta_id === juntaId && member.profile_id === user.id)),
-      juntas: allJuntas.map((item) => (item.id === juntaId ? { ...item, integrantes_actuales: Math.max(Number(item.integrantes_actuales ?? 0) - 1, 0), is_member_current_user: false } : item))
-    });
+    const snapshot = await fetchUserJuntaSnapshot(user.id);
+    if (snapshot.ok) {
+      setData({
+        members: snapshot.data.members,
+        schedules: snapshot.data.schedules,
+        payments: snapshot.data.payments,
+        payouts: snapshot.data.payouts
+      });
+    } else {
+      setData({
+        members: allMembers.filter((member) => !(member.junta_id === juntaId && member.profile_id === user.id)),
+        juntas: allJuntas.map((item) => (item.id === juntaId ? { ...item, integrantes_actuales: Math.max(Number(item.integrantes_actuales ?? 0) - 1, 0) } : item))
+      });
+    }
+    await reloadCatalog();
     setLeavingId(null);
   };
 
@@ -361,7 +409,7 @@ export default function JuntasDisponiblesPage() {
           {visibleJuntas.map((j) => {
             const juntaId = j.id;
             const isOwner = j.admin_id === user.id;
-            const isMember = j.is_member_current_user === true;
+            const isMember = isUserMember({ juntaId, userId: user.id, members: allMembers });
             const description = j.descripcion?.trim() || 'Junta sin descripción aún.';
             const miembrosActuales = countByJunta.get(juntaId) ?? 0;
             const cupoCompleto = miembrosActuales >= j.participantes_max;

@@ -26,3 +26,12 @@ export function getActiveMemberCountByJunta(juntas: Junta[], members: JuntaMembe
   });
   return map;
 }
+
+export function isUserMember(params: { juntaId: string; userId?: string | null; members: JuntaMember[] }) {
+  if (!params.userId) return false;
+  return params.members.some((member) => (
+    member.junta_id === params.juntaId
+    && member.profile_id === params.userId
+    && member.estado === 'activo'
+  ));
+}
