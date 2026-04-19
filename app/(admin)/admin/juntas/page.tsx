@@ -17,7 +17,7 @@ export default function AdminJuntasPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [query, setQuery] = useState('');
-  const [estado, setEstado] = useState<'todos' | 'borrador' | 'activa' | 'cerrada'>('todos');
+  const [estado, setEstado] = useState<'todos' | 'borrador' | 'activa' | 'cerrada' | 'deshabilitada'>('todos');
   const [visibilidad, setVisibilidad] = useState<'todas' | 'publica' | 'privada'>('todas');
   const [tipo, setTipo] = useState<'todos' | 'normal' | 'incentivo'>('todos');
   const [createdFrom, setCreatedFrom] = useState('');
@@ -25,14 +25,13 @@ export default function AdminJuntasPage() {
 
   const [candidate, setCandidate] = useState<AdminJuntaListItem | null>(null);
   const [submittingDelete, setSubmittingDelete] = useState(false);
-  const [blockedOverrides, setBlockedOverrides] = useState<Set<string>>(new Set());
 
   const isRowBlocked = useCallback((row: AdminJuntaListItem) => (
-    Boolean(row.bloqueada) || String(row.estado_visual ?? '').toLowerCase() === 'bloqueada' || blockedOverrides.has(row.id)
-  ), [blockedOverrides]);
+    Boolean(row.bloqueada) || String(row.estado).toLowerCase() === 'bloqueada' || String(row.estado_visual ?? '').toLowerCase() === 'deshabilitada'
+  ), []);
 
   const getEstadoVisual = useCallback((row: AdminJuntaListItem) => (
-    isRowBlocked(row) ? 'Bloqueada' : (row.estado_visual ?? row.estado)
+    isRowBlocked(row) ? 'Deshabilitada' : (row.estado_visual ?? row.estado)
   ), [isRowBlocked]);
 
   const loadRows = useCallback(async (includeBlocked: boolean) => {
@@ -44,13 +43,9 @@ export default function AdminJuntasPage() {
       return;
     }
     setError(null);
-    setRows(result.data.map((row) => (
-      blockedOverrides.has(row.id)
-        ? { ...row, bloqueada: true, estado_visual: 'bloqueada' }
-        : row
-    )));
+    setRows(result.data);
     setLoading(false);
-  }, [blockedOverrides]);
+  }, []);
 
   useEffect(() => {
     if (!isBackofficeAdmin(user)) return;
@@ -63,7 +58,10 @@ export default function AdminJuntasPage() {
 
     return rows.filter((row) => {
       if (!showBlocked && isRowBlocked(row)) return false;
-      if (estado !== 'todos' && row.estado !== estado) return false;
+      if (estado !== 'todos') {
+        if (estado === 'deshabilitada' && !isRowBlocked(row)) return false;
+        if (estado !== 'deshabilitada' && row.estado !== estado) return false;
+      }
       if (visibilidad !== 'todas' && row.visibilidad !== visibilidad) return false;
       if (tipo !== 'todos' && row.tipo_junta !== tipo) return false;
 
@@ -106,6 +104,7 @@ export default function AdminJuntasPage() {
             <option value="borrador">Borrador</option>
             <option value="activa">Activa</option>
             <option value="cerrada">Cerrada</option>
+            <option value="deshabilitada">Deshabilitada</option>
           </select>
           <select className="rounded-md border px-3 py-2 text-sm" value={visibilidad} onChange={(event) => setVisibilidad(event.target.value as typeof visibilidad)}>
             <option value="todas">Visibilidad: todas</option>
@@ -166,7 +165,7 @@ export default function AdminJuntasPage() {
                     <div className="flex flex-wrap gap-2">
                       <Link href={`/admin/juntas/${row.id}`}><Button variant="outline">Ver detalle</Button></Link>
                       <Button variant="destructive" disabled={isRowBlocked(row)} onClick={() => setCandidate(row)}>
-                        {isRowBlocked(row) ? 'Eliminada' : 'Eliminar'}
+                        {isRowBlocked(row) ? 'Deshabilitada' : 'Eliminar'}
                       </Button>
                     </div>
                   </td>
@@ -210,14 +209,9 @@ export default function AdminJuntasPage() {
                       setError(result.message);
                       return;
                     }
-                    setBlockedOverrides((prev) => {
-                      const next = new Set(prev);
-                      next.add(candidate.id);
-                      return next;
-                    });
                     setRows((prev) => (
                       showBlocked
-                        ? prev.map((row) => row.id === candidate.id ? { ...row, bloqueada: true, estado_visual: 'bloqueada' } : row)
+                        ? prev.map((row) => row.id === candidate.id ? { ...row, bloqueada: true, estado_visual: 'deshabilitada' } : row)
                         : prev.filter((row) => row.id !== candidate.id)
                     ));
                     await loadRows(showBlocked);

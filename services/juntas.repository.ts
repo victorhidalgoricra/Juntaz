@@ -440,11 +440,11 @@ export async function fetchAdminJuntas(params?: { includeBlocked?: boolean }) {
 
   const normalized = ((data ?? []) as Partial<AdminJuntaListItem>[]).map((row) => {
     const estadoVisualRaw = String(row.estado_visual ?? '').toLowerCase();
-    const bloqueada = Boolean(row.bloqueada) || estadoVisualRaw === 'bloqueada';
+    const bloqueada = Boolean(row.bloqueada) || estadoVisualRaw === 'bloqueada' || estadoVisualRaw === 'deshabilitada';
     return {
       ...row,
       bloqueada,
-      estado_visual: bloqueada ? 'Bloqueada' : row.estado
+      estado_visual: bloqueada ? 'deshabilitada' : row.estado
     } as AdminJuntaListItem;
   });
 

@@ -52,6 +52,8 @@ export default function AdminJuntaDetailPage({ params }: { params: { id: string 
     };
   }, [junta, members, payments, schedules]);
 
+  const estadoVisual = junta?.bloqueada ? 'Deshabilitada' : junta?.estado;
+
   if (!isBackofficeAdmin(user)) {
     return <Card><p className="text-sm text-slate-600">No tienes permisos para ver esta vista.</p></Card>;
   }
@@ -73,7 +75,7 @@ export default function AdminJuntaDetailPage({ params }: { params: { id: string 
       <Card className="space-y-3 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-xl font-semibold">{junta.nombre}</h2>
-          <Badge>{junta.estado}</Badge>
+          <Badge>{estadoVisual}</Badge>
         </div>
 
         <div className="grid gap-3 md:grid-cols-3 text-sm">
@@ -114,7 +116,7 @@ export default function AdminJuntaDetailPage({ params }: { params: { id: string 
               setIsDeleting(false);
             }}
           >
-            {junta.bloqueada ? 'Junta ya eliminada' : isDeleting ? 'Eliminando...' : 'Eliminar junta'}
+            {junta.bloqueada ? 'Junta deshabilitada' : isDeleting ? 'Eliminando...' : 'Eliminar junta'}
           </Button>
         </div>
       </Card>
