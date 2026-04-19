@@ -15,6 +15,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard' },
+  { href: '/pagar', label: 'Pagar' },
   { href: '/juntas', label: 'Juntas disponibles' },
   { href: '/juntas/new', label: 'Crear junta' },
   { href: '/account', label: 'Mi cuenta' },

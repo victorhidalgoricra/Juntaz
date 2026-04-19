@@ -8,11 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { getPaymentAlertState, type PaymentAlertState } from '@/lib/payment-alert';
-import {
-  getCurrentRoundReceiver,
-  getParticipantDisplayName,
-  getReceiverPaymentDetails
-} from '@/lib/payment-instructions';
+import { buildPaymentDebtItems } from '@/lib/payment-debts';
 import { getJuntaEngagementLayer, type JuntaMission, type LevelUnlocks } from '@/services/junta-engagement.service';
 import { fetchProfilesByIds } from '@/services/profile.service';
 import { fetchUserJuntaSnapshot } from '@/services/juntas.repository';
@@ -63,20 +59,6 @@ type NextLevelData = {
   unlocks: LevelUnlocks | null;
   gainText: string;
   lossText: string;
-};
-
-type PaymentInstructionData = {
-  juntaId: string;
-  receiverName: string;
-  amount: number;
-  statusLabel: string;
-  receiverMethod: string;
-  receiverDestination: string | null;
-  receiverSecondary: string | null;
-  receiverNotes: string | null;
-  missingReceiverMethod: boolean;
-  missingMyPayoutConfig: boolean;
-  timeline: Array<{ id: string; label: string }>;
 };
 
 function money(value: number) {
@@ -247,8 +229,8 @@ function DashboardHeader({ displayName }: { displayName: string }) {
 
 function PendingPaymentBanner({ data }: { data: PaymentAlertState }) {
   if (!data.juntaId || !data.cuotaId) return null;
-  const directHref = `/juntas/${data.juntaId}/registrar-pago?juntaId=${encodeURIComponent(data.juntaId)}&cuotaId=${encodeURIComponent(data.cuotaId)}&src=dashboard`;
-  const fallbackHref = `/juntas/${data.juntaId}/payments`;
+  const directHref = `/pagar?juntaId=${encodeURIComponent(data.juntaId)}&cuotaId=${encodeURIComponent(data.cuotaId)}`;
+  const fallbackHref = '/pagar';
   const toneClass = data.tone === 'destructive'
     ? 'border-rose-300 bg-rose-100 hover:border-rose-400'
     : 'border-amber-300 bg-amber-100 hover:border-amber-400';
@@ -273,34 +255,39 @@ function PendingPaymentBanner({ data }: { data: PaymentAlertState }) {
   );
 }
 
-function PaymentInstructionCard({ data }: { data: PaymentInstructionData }) {
+function PaymentNotificationsCard({ items }: { items: ReturnType<typeof buildPaymentDebtItems> }) {
+  const pending = items.filter((item) => item.status !== 'pagada');
+  const urgent = pending.filter((item) => item.status === 'vencida' || item.status === 'vence_hoy');
+
   return (
     <Card className="border border-slate-200 p-4">
-      <h2 className="text-base font-semibold text-slate-900">Tu aporte de esta semana</h2>
-      <p className="mt-2 text-sm text-slate-700">Debes pagar a: <span className="font-semibold">{data.receiverName}</span></p>
-      <p className="text-sm text-slate-700">Monto: <span className="font-semibold">{money(data.amount)}</span></p>
-      <p className="text-sm text-slate-700">Estado: <span className="font-semibold">{data.statusLabel}</span></p>
-      <p className="text-sm text-slate-700">Medio de pago: <span className="font-semibold">{data.receiverMethod}</span></p>
-      {data.receiverDestination && <p className="text-sm text-slate-700">{data.receiverDestination}</p>}
-      {data.receiverSecondary && <p className="text-sm text-slate-700">{data.receiverSecondary}</p>}
-      {data.receiverNotes && <p className="text-xs text-slate-500">Nota: {data.receiverNotes}</p>}
-
-      {data.missingReceiverMethod && (
-        <p className="mt-2 text-sm font-medium text-amber-700">Este participante aún no configuró su medio de pago.</p>
-      )}
-      {data.missingMyPayoutConfig && (
-        <p className="mt-1 text-sm font-medium text-blue-700">Completa tu medio de pago en tu perfil para poder recibir aportes.</p>
-      )}
-
-      <div className="mt-3 space-y-1">
-        {data.timeline.map((item) => (
-          <p key={item.id} className="text-xs text-slate-600">{item.label}</p>
-        ))}
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-slate-900">Notificaciones y recordatorios</h2>
+        <Link href="/notifications" className="text-xs font-medium text-blue-700">Ver centro de alertas →</Link>
       </div>
-
-      <div className="mt-3">
-        <Link href={`/juntas/${data.juntaId}`} className="text-sm font-medium text-blue-700">Ver detalle de junta →</Link>
-      </div>
+      {pending.length === 0 ? (
+        <p className="mt-2 text-sm text-slate-600">No tienes cuotas pendientes por ahora. Todo al día ✅</p>
+      ) : (
+        <>
+          <p className="mt-2 text-sm text-slate-600">Tienes {pending.length} cuotas pendientes ({urgent.length} urgentes).</p>
+          <div className="mt-3 space-y-2">
+            {pending.slice(0, 3).map((item) => (
+              <div key={item.id} className="rounded-md border border-slate-200 p-3 text-sm">
+                <p className="font-medium text-slate-900">{item.juntaNombre} · Cuota {item.cuotaNumero}</p>
+                <p className="text-slate-700">Debes pagar a {item.receiverName} · {money(item.monto)}</p>
+                <p className="text-xs text-slate-500">
+                  {item.status === 'vencida' ? 'Vencida' : item.status === 'vence_hoy' ? 'Vence hoy' : 'Pendiente'} · Método receptor: {item.receiverMethod}
+                </p>
+                <div className="mt-2">
+                  <Link href={`/juntas/${item.juntaId}/registrar-pago?juntaId=${encodeURIComponent(item.juntaId)}&cuotaId=${encodeURIComponent(item.cuotaId)}&src=dashboard_notifications`}>
+                    <Button variant="outline">Pagar esta cuota</Button>
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </Card>
   );
 }
@@ -525,56 +512,15 @@ export default function DashboardPage() {
     payments: safePayments
   });
 
-  const paymentInstruction = useMemo<PaymentInstructionData | null>(() => {
-    if (!paymentAlert.juntaId || !paymentAlert.cuotaId) return null;
-    if (paymentAlert.status === 'none' || paymentAlert.status === 'paid') return null;
-
-    const schedule = safeSchedules.find((item) => item.id === paymentAlert.cuotaId);
-    const junta = safeJuntas.find((item) => item.id === paymentAlert.juntaId);
-    if (!schedule || !junta) return null;
-
-    const juntaMembers = safeMembers.filter((member) => member.junta_id === junta.id);
-    const receiverMember = getCurrentRoundReceiver({ schedule, members: juntaMembers });
-    if (!receiverMember) return null;
-
-    const receiverProfile = profilesById[receiverMember.profile_id];
-    const receiverName = getParticipantDisplayName(receiverProfile);
-    const receiverPayment = getReceiverPaymentDetails(receiverProfile);
-    const myPaymentConfig = getReceiverPaymentDetails(profilesById[userId] ?? user);
-
-    const timeline = safeSchedules
-      .filter((item) => item.junta_id === junta.id)
-      .slice()
-      .sort((a, b) => parseCalendarDate(a.fecha_vencimiento).getTime() - parseCalendarDate(b.fecha_vencimiento).getTime())
-      .slice(0, 4)
-      .map((item) => {
-        const member = getCurrentRoundReceiver({ schedule: item, members: juntaMembers });
-        const profile = member ? profilesById[member.profile_id] : null;
-        const name = member?.profile_id === userId ? 'Tú' : getParticipantDisplayName(profile);
-        return {
-          id: item.id,
-          label: `S${item.cuota_numero} · ${format(parseCalendarDate(item.fecha_vencimiento), 'dd MMM', { locale: es })} · Recibe ${name} · ${money(item.monto)}`
-        };
-      });
-
-    return {
-      juntaId: junta.id,
-      receiverName,
-      amount: schedule.monto,
-      statusLabel: paymentAlert.status === 'overdue' ? 'Vencido' : paymentAlert.status === 'due_today' ? 'Vence hoy' : 'Pendiente',
-      receiverMethod: receiverPayment.methodLabel,
-      receiverDestination: receiverPayment.destinationLabel && receiverPayment.destinationValue
-        ? `${receiverPayment.destinationLabel}: ${receiverPayment.destinationValue}`
-        : null,
-      receiverSecondary: receiverPayment.secondaryLabel && receiverPayment.secondaryValue
-        ? `${receiverPayment.secondaryLabel}: ${receiverPayment.secondaryValue}`
-        : null,
-      receiverNotes: receiverPayment.notes,
-      missingReceiverMethod: !receiverPayment.isConfigured,
-      missingMyPayoutConfig: !myPaymentConfig.isConfigured,
-      timeline
-    };
-  }, [paymentAlert, profilesById, safeJuntas, safeMembers, safeSchedules, user, userId]);
+  const paymentDebts = useMemo(() => buildPaymentDebtItems({
+    userId,
+    juntas: safeJuntas,
+    members: safeMembers,
+    schedules: safeSchedules,
+    payments: safePayments,
+    profilesById,
+    fallbackProfile: user
+  }), [profilesById, safeJuntas, safeMembers, safePayments, safeSchedules, user, userId]);
 
   if (!user) return <Card>Necesitas iniciar sesión para ver tu dashboard.</Card>;
 
@@ -634,7 +580,7 @@ export default function DashboardPage() {
       <DashboardHeader displayName={displayName} />
 
       {paymentAlert.status !== 'none' && paymentAlert.status !== 'paid' && <PendingPaymentBanner data={paymentAlert} />}
-      {paymentInstruction && <PaymentInstructionCard data={paymentInstruction} />}
+      <PaymentNotificationsCard items={paymentDebts} />
 
       <JuntaScoreCard score={score} />
 
