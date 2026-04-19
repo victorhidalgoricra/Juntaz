@@ -109,13 +109,13 @@ export function LoginPageClient() {
           payout_notes: refreshedProfile?.payout_notes,
           global_role: globalRole
         });
-        router.push(redirect);
+        router.replace(redirect);
         return;
       }
 
       const globalRole = await resolveGlobalRole(values.email);
       setUser({ id: crypto.randomUUID(), email: values.email, nombre: values.email.split('@')[0], celular: '', global_role: globalRole });
-      router.push(redirect);
+      router.replace(redirect);
     } catch (error) {
       console.error('[Login] auth error', error);
       setAuthError(error instanceof Error ? mapAuthErrorMessage(error.message) : 'No se pudo iniciar sesión en este momento.');

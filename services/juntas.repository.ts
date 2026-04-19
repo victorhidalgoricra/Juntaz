@@ -50,10 +50,9 @@ async function fetchPublicJuntasFallback() {
   const fallback = await supabase
     .schema('public')
     .from('juntas')
-    .select('id,admin_id,nombre,descripcion,visibilidad,tipo_junta,cuota_base,monto_cuota,frecuencia_pago,fecha_inicio,estado,participantes_max,access_code,slug,created_at,bloqueada')
+    .select('id,admin_id,nombre,descripcion,visibilidad,tipo_junta,cuota_base,monto_cuota,frecuencia_pago,fecha_inicio,estado,participantes_max,access_code,slug,created_at')
     .eq('visibilidad', 'publica')
     .in('estado', ['borrador', 'activa'])
-    .eq('bloqueada', false)
     .order('created_at', { ascending: false })
     .limit(200);
 

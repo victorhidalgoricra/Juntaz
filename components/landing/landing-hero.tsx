@@ -44,11 +44,11 @@ export function LandingHero() {
         </p>
 
         <div className="flex flex-wrap gap-3">
-          <Link href="/demo" className="inline-flex rounded-[var(--r-sm)] bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[var(--accent-dark)]">
+          <Link href="/register" className="inline-flex rounded-[var(--r-sm)] bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[var(--accent-dark)]">
             Crear mi junta gratis →
           </Link>
-          <Link href="/demo" className="inline-flex rounded-[var(--r-sm)] border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-sm font-semibold text-[var(--text)] transition hover:bg-[var(--accent-bg)]">
-            Ver demo
+          <Link href="/explorar" className="inline-flex rounded-[var(--r-sm)] border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-sm font-semibold text-[var(--text)] transition hover:bg-[var(--accent-bg)]">
+            Explorar juntas
           </Link>
         </div>
 
